@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: 'Segoe UI', sans-serif; background: #f1f3f4; color: #212121; font-size: 13px; }
+
+      .topbar {
+        background: #1a1a2e; color: #fff; padding: 10px 12px;
+        font-size: 13px; font-weight: bold;
+        display: flex; justify-content: space-between; align-items: center;
+      }
+      .topbar span { font-size: 10px; opacity: 0.6; font-weight: normal; }
+
+      .card { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 10px 12px; }
+      .card-dark { background: #1a1a2e; border-bottom: 1px solid #0f3460; padding: 10px 12px; color: white; }
+      .card-title { font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.6px; color: #546e7a; margin-bottom: 8px; }
+      .card-dark .card-title { color: #90a4ae; }
+
+      .stat-row { display: flex; gap: 6px; margin-bottom: 4px; }
+      .stat-box { flex: 1; background: #16213e; border-radius: 6px; padding: 7px 4px; text-align: center; }
+      .stat-box .num { font-size: 16px; font-weight: bold; color: #4ecdc4; }
+      .stat-box .lbl { font-size: 8px; color: #aaa; text-transform: uppercase; margin-top: 2px; }
+      .race-name { font-size: 11px; color: #ccc; text-align: center; margin-top: 6px; }
+
+      .field { margin-bottom: 10px; }
+      .field label { display: block; font-size: 11px; color: #546e7a; margin-bottom: 3px; }
+      .field input[type=number], .field select {
+        width: 100%; padding: 5px 7px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px;
+      }
+      .field input[type=range] { width: 100%; margin-top: 4px; padding: 0; }
+      .val { font-size: 11px; font-weight: bold; color: #1a73e8; margin-left: 6px; }
+      .hint { font-size: 10px; color: #9e9e9e; margin-top: 2px; }
+
+      /* Pool exposure rows */
+      .pool-row {
+        display: flex; align-items: center; gap: 8px;
+        margin-bottom: 8px; padding: 6px 8px;
+        background: #f8f9fa; border-radius: 4px; border-left: 3px solid #ccc;
+      }
+      .pool-row.dom   { border-left-color: #ff6b6b; }
+      .pool-row.pd    { border-left-color: #4ecdc4; }
+      .pool-row.punt  { border-left-color: #f9a825; }
+      .pool-row.fill  { border-left-color: #9e9e9e; }
+      .pool-label { font-size: 11px; font-weight: bold; width: 40px; flex-shrink: 0; }
+      .pool-row.dom  .pool-label { color: #c62828; }
+      .pool-row.pd   .pool-label { color: #00695c; }
+      .pool-row.punt .pool-label { color: #e65100; }
+      .pool-row.fill .pool-label { color: #616161; }
+      .pool-slider { flex: 1; }
+      .pool-slider input[type=range] { width: 100%; }
+      .pool-val { font-size: 11px; font-weight: bold; color: #1a73e8; width: 35px; text-align: right; flex-shrink: 0; }
+
+      .btn { width: 100%; border: none; border-radius: 4px; padding: 10px; font-size: 12px; font-weight: bold; cursor: pointer; margin-top: 4px; }
+      .btn-run { background: #1a73e8; color: white; }
+      .btn-run:hover { background: #1557b0; }
+      .btn-run:disabled { background: #90a4ae; cursor: not-allowed; }
+
+      .status {
+        font-size: 11px; padding: 7px 9px; border-radius: 3px; margin-top: 8px;
+        white-space: pre-wrap; line-height: 1.5; max-height: 200px; overflow-y: auto;
+      }
+      .status.idle { color: #546e7a; background: #f8f9fa; }
+      .status.ok   { color: #1b5e20; background: #e8f5e9; }
+      .status.err  { color: #b71c1c; background: #ffebee; }
+      .status.info { color: #0d47a1; background: #e3f2fd; }
+    </style>
+  </head>
+  <body>
+
+    <div class="topbar">
+      ⚡ Optimizer
+      <span>NASCAR DFS 2026</span>
+    </div>
+
+    <!-- Race Context -->
+    <div class="card-dark">
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="num"><?= laps ?></div>
+          <div class="lbl">Laps</div>
+        </div>
+        <div class="stat-box">
+          <div class="num"><?= domRange ?></div>
+          <div class="lbl">DOM Target</div>
+        </div>
+        <div class="stat-box">
+          <div class="num"><?= pdRange ?></div>
+          <div class="lbl">PD Target</div>
+        </div>
+      </div>
+      <div class="race-name"><?= raceName ?> · <?= trackType ?></div>
+    </div>
+
+    <!-- Generation Settings -->
+    <div class="card">
+      <div class="card-title">Generation Settings</div>
+
+      <div class="field">
+        <label>Lineups to generate</label>
+        <input type="number" id="count" value="20" min="1" max="20">
+      </div>
+
+      <div class="field">
+        <label>Min unique drivers per lineup <span class="val" id="uniqueVal">2</span></label>
+        <input type="range" id="minUnique" min="0" max="5" step="1" value="2"
+               oninput="document.getElementById('uniqueVal').textContent = this.value">
+        <div class="hint">0 = no constraint · 3 = each lineup shares ≤3 drivers with any other</div>
+      </div>
+
+      <div class="field">
+        <label>Optimize by</label>
+        <select id="optimizeBy">
+          <option value="adjProj">Adj Proj (recommended)</option>
+          <option value="ceiling">Ceiling (max upside)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Randomization <span class="val" id="noiseVal">15%</span></label>
+        <input type="range" id="noiseLevel" min="0" max="50" step="5" value="15"
+               oninput="document.getElementById('noiseVal').textContent = this.value + '%'">
+        <div class="hint">0% = pure optimization · 50% = highly random</div>
+      </div>
+
+      <div class="field">
+        <label>Global max exposure <span class="val" id="globalVal">65%</span></label>
+        <input type="range" id="maxExposure" min="10" max="100" step="5" value="65"
+               oninput="document.getElementById('globalVal').textContent = this.value + '%'">
+        <div class="hint">Ceiling over all pool caps below</div>
+      </div>
+    </div>
+
+    <!-- Pool Exposure Caps -->
+    <div class="card">
+      <div class="card-title">Pool Max Exposure</div>
+
+      <div class="pool-row dom">
+        <div class="pool-label">DOM</div>
+        <div class="pool-slider">
+          <input type="range" id="capDOM" min="10" max="100" step="5" value="65"
+                 oninput="document.getElementById('valDOM').textContent = this.value + '%'">
+        </div>
+        <div class="pool-val" id="valDOM">65%</div>
+      </div>
+
+      <div class="pool-row pd">
+        <div class="pool-label">PD</div>
+        <div class="pool-slider">
+          <input type="range" id="capPD" min="10" max="100" step="5" value="50"
+                 oninput="document.getElementById('valPD').textContent = this.value + '%'">
+        </div>
+        <div class="pool-val" id="valPD">50%</div>
+      </div>
+
+      <div class="pool-row punt">
+        <div class="pool-label">PUNT</div>
+        <div class="pool-slider">
+          <input type="range" id="capPUNT" min="10" max="100" step="5" value="35"
+                 oninput="document.getElementById('valPUNT').textContent = this.value + '%'">
+        </div>
+        <div class="pool-val" id="valPUNT">35%</div>
+      </div>
+
+      <div class="pool-row fill">
+        <div class="pool-label">FILL</div>
+        <div class="pool-slider">
+          <input type="range" id="capFILL" min="5" max="100" step="5" value="15"
+                 oninput="document.getElementById('valFILL').textContent = this.value + '%'">
+        </div>
+        <div class="pool-val" id="valFILL">15%</div>
+      </div>
+    </div>
+
+    <!-- Min Exposure -->
+    <div class="card">
+      <div class="card-title">Min Exposure (optional)</div>
+      <div class="field">
+        <label>Driver names (comma-separated)</label>
+        <input type="text" id="minNames" placeholder="e.g. Denny Hamlin, Kyle Larson">
+      </div>
+      <div class="field">
+        <label>Must appear in at least N lineups</label>
+        <input type="number" id="minCount" value="0" min="0" max="20">
+      </div>
+    </div>
+
+    <!-- Run -->
+    <div class="card">
+      <button class="btn btn-run" id="btnRun" onclick="doRun()">▶ Generate Lineups</button>
+      <div class="status idle" id="status">Configure settings and click Generate.</div>
+    </div>
+
+    <script>
+      function doRun() {
+        var btn = document.getElementById('btnRun');
+        btn.disabled = true;
+        setStatus('info', 'Generating lineups…');
+
+        var settings = {
+          count:       parseInt(document.getElementById('count').value) || 20,
+          optimizeBy:  document.getElementById('optimizeBy').value,
+          minUnique:   parseInt(document.getElementById('minUnique').value) || 0,
+          noiseLevel:  parseInt(document.getElementById('noiseLevel').value) / 100,
+          maxExposure: parseInt(document.getElementById('maxExposure').value) / 100,
+          poolCaps: {
+            DOM:  parseInt(document.getElementById('capDOM').value)  / 100,
+            PD:   parseInt(document.getElementById('capPD').value)   / 100,
+            PUNT: parseInt(document.getElementById('capPUNT').value) / 100,
+            FILL: parseInt(document.getElementById('capFILL').value) / 100
+          },
+          minExposureNames: document.getElementById('minNames').value
+            .split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+          minExposureCount: parseInt(document.getElementById('minCount').value) || 0
+        };
+
+        google.script.run
+          .withSuccessHandler(function(r) {
+            btn.disabled = false;
+            setStatus(r.ok ? 'ok' : 'err', r.msg);
+          })
+          .withFailureHandler(function(e) {
+            btn.disabled = false;
+            setStatus('err', 'Error: ' + e.message);
+          })
+          .generateLineups(settings);
+      }
+
+      function setStatus(cls, msg) {
+        var el = document.getElementById('status');
+        el.className = 'status ' + cls;
+        el.textContent = msg;
+      }
+    </script>
+
+  </body>
+</html>

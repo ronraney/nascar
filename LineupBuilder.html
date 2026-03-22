@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+      body { background: #f1f3f4; color: #212121; font-size: 13px; }
+      .topbar { background: #1a1a2e; color: #fff; padding: 8px 10px; font-size: 13px; font-weight: bold; }
+      .topbar span { font-size: 10px; opacity: 0.6; font-weight: normal; }
+      .card { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 8px 10px; }
+      .card-title { font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: .5px; color: #546E7A; margin-bottom: 6px; }
+      .sal-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+      .sal-box { background: #f1f3f4; border-radius: 3px; padding: 4px; text-align: center; }
+      .sal-box .v { font-size: 13px; font-weight: bold; color: #1a1a2e; }
+      .sal-box .l { font-size: 9px; color: #78909C; }
+      .sal-box.warn .v { color: #c62828; }
+      .sal-box.ok .v { color: #2e7d32; }
+      .slots { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+      .slot { flex: 1; min-width: 42%; background: #f1f3f4; border-radius: 3px; padding: 4px 5px; font-size: 11px; color: #546E7A; border: 1px dashed #bdbdbd; }
+      .slot.filled { background: #E8EAF6; border: 1px solid #7986CB; color: #1A237E; font-weight: bold; }
+      .slot-x { float: right; cursor: pointer; opacity: 0.5; font-weight: normal; margin-left: 2px; font-size: 12px; }
+      .slot-x:hover { opacity: 1; }
+      .step-hdr { font-size: 12px; font-weight: bold; color: #283593; margin-bottom: 2px; }
+      .step-why { font-size: 10px; color: #546E7A; margin-bottom: 6px; line-height: 1.4; }
+      .step-count { font-size: 10px; color: #1a73e8; font-weight: bold; margin-bottom: 6px; }
+      .frow { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #e0e0e0; }
+      .frow:last-child { border-bottom: none; }
+      .finfo { flex: 1; min-width: 0; }
+      .fname { font-size: 12px; font-weight: bold; color: #212121; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .fmeta { font-size: 10px; color: #546E7A; }
+      .fstat { font-size: 10px; font-weight: bold; color: #283593; }
+      .btn-sel { background: #1976D2; color: #fff; border: none; border-radius: 3px; padding: 5px 8px; font-size: 11px; font-weight: bold; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+      .btn-sel:hover { background: #1565C0; }
+      .empty-pool { font-size: 10px; color: #9E9E9E; padding: 6px 0; font-style: italic; }
+      .actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 5px; margin-top: 6px; }
+      .btn { border: none; border-radius: 3px; padding: 7px 4px; font-size: 11px; font-weight: bold; cursor: pointer; }
+      .btn:disabled { opacity: .4; cursor: default; }
+      .btn:hover:not(:disabled) { opacity: .85; }
+      .btn-start { background: #1976D2; color: #fff; }
+      .btn-save { background: #388E3C; color: #fff; }
+      .btn-clear { background: #D32F2F; color: #fff; }
+      .btn-skip { background: #f1f3f4; color: #546E7A; border: 1px solid #bdbdbd; }
+      .btn-back { background: #f1f3f4; color: #546E7A; border: 1px solid #bdbdbd; }
+      .nav-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 6px; }
+      select { width: 100%; padding: 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; background: #fff; margin-bottom: 4px; }
+      .status { font-size: 10px; padding: 5px 8px; border-radius: 3px; margin-top: 6px; text-align: center; min-height: 20px; }
+      .status.ok { background: #E8F5E9; color: #2e7d32; }
+      .status.err { background: #FFEBEE; color: #c62828; }
+      .status.info { background: #E3F2FD; color: #1565C0; }
+      .status.idle { background: #f1f3f4; color: #546E7A; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">&#x1f9f0; Lineup Builder <span>NASCAR DFS</span></div>
+
+    <div class="card">
+      <div class="card-title">Lineup</div>
+      <div class="sal-row">
+        <div class="sal-box" id="scnt"><div class="v" id="vCnt">0 / 6</div><div class="l">Selected</div></div>
+        <div class="sal-box" id="ssal"><div class="v" id="vSal">$0</div><div class="l">Salary</div></div>
+        <div class="sal-box" id="srem"><div class="v" id="vRem">&#x2014;</div><div class="l">Remaining</div></div>
+      </div>
+      <div class="slots" id="slots"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Contest Type</div>
+      <select id="ctSel">
+        <option value="Cash">Cash</option>
+        <option value="GPP">GPP</option>
+      </select>
+      <div class="actions">
+        <button class="btn btn-start" onclick="doStart()">Start Building</button>
+        <button class="btn btn-save" onclick="doSave()">Save</button>
+        <button class="btn btn-clear" onclick="doClear()">Clear</button>
+      </div>
+      <button class="btn btn-save" style="width:100%;margin-top:5px;background:#546E7A;font-size:10px" onclick="doSaveByCheckboxes()">Save by Dashboard Checkboxes</button>
+      <div class="status idle" id="status">Select contest type and click Start Building.</div>
+    </div>
+
+    <div class="card" id="stepCard" style="display:none">
+      <div class="card-title" id="stepLabel"></div>
+      <div class="step-hdr" id="stepHdr"></div>
+      <div class="step-why" id="stepWhy"></div>
+      <div class="step-count" id="stepCount"></div>
+      <div id="poolList"></div>
+      <div class="nav-row">
+        <button class="btn btn-skip" id="btnSkip" onclick="doSkip()">Skip Step</button>
+        <button class="btn btn-back" onclick="doBack()">&#x21a9; Back</button>
+      </div>
+    </div>
+
+    <script>
+      var state={ct:"Cash",stepIdx:-1,steps:[],selected:[],stepPicks:[]};
+      var SALARY_CAP=50000;
+
+      function fmt(n){return "$"+(n||0).toLocaleString();}
+      function setStatus(m,t){var s=document.getElementById("status");s.textContent=m;s.className="status "+(t||"idle");}
+      function usedNames(){return state.selected.map(function(d){return d.name;});}
+      function salUsed(){return state.selected.reduce(function(s,d){return s+d.salary;},0);}
+      function salRemaining(){return SALARY_CAP-salUsed();}
+      function curStep(){return state.stepIdx>=0&&state.stepIdx<state.steps.length?state.steps[state.stepIdx]:null;}
+
+      function renderSlots(){
+        var el=document.getElementById("slots"),html="";
+        for(var i=0;i<6;i++){
+          var d=state.selected[i];
+          if(!d){html+='<div class="slot">\u2014</div>';}
+          else{html+='<div class="slot filled">'+d.name+' <span style="font-weight:normal;font-size:9px">'+fmt(d.salary)+'</span><span class="slot-x" onclick="removeSlot('+i+')">\u00d7</span></div>';}
+        }
+        el.innerHTML=html;
+      }
+
+      function renderSalary(){
+        var used=salUsed(),rem=salRemaining(),cnt=state.selected.length;
+        var warn=used>SALARY_CAP||cnt>6;
+        document.getElementById("vCnt").textContent=cnt+" / 6";
+        document.getElementById("vSal").textContent=fmt(used);
+        document.getElementById("vRem").textContent=fmt(rem);
+        document.getElementById("scnt").className="sal-box"+(warn?" warn":"");
+        document.getElementById("ssal").className="sal-box"+(warn?" warn":" ok");
+        document.getElementById("srem").className="sal-box"+(warn?" warn":"");
+      }
+
+      function renderStep(){
+        var sc=document.getElementById("stepCard"),step=curStep();
+
+        // Lineup complete
+        if(state.selected.length>=6){
+          sc.style.display="";
+          document.getElementById("stepLabel").textContent="Lineup Complete";
+          document.getElementById("stepHdr").textContent="6 drivers selected";
+          document.getElementById("stepWhy").textContent="Review your slots above, then click Save.";
+          document.getElementById("stepCount").textContent="";
+          document.getElementById("poolList").innerHTML="";
+          document.getElementById("btnSkip").disabled=true;
+          return;
+        }
+
+        // Past all defined steps — show FILL
+        if(state.stepIdx>=state.steps.length){
+          sc.style.display="";
+          var rem=6-state.selected.length;
+          document.getElementById("stepLabel").textContent="Fill";
+          document.getElementById("stepHdr").textContent="Fill remaining "+rem+" slot"+(rem>1?"s":"");
+          document.getElementById("stepWhy").textContent=state.ct==="Cash"?"Pick best available by projection and floor.":"Pick best available by ceiling and edge.";
+          document.getElementById("stepCount").textContent="";
+          document.getElementById("btnSkip").disabled=true;
+          loadPool("FILL");return;
+        }
+
+        // No step yet
+        if(!step){sc.style.display="none";return;}
+
+        // Current step
+        sc.style.display="";
+        document.getElementById("stepLabel").textContent=step.label;
+        document.getElementById("stepHdr").textContent=step.hdr;
+        document.getElementById("stepWhy").textContent=step.why;
+
+        var picked=state.stepPicks[state.stepIdx]||0;
+        var needMax=step.max-picked;
+        var metMin=picked>=step.min;
+
+        // Counter text
+        var rangeLabel=step.min===step.max?""+step.max:step.min+"-"+step.max;
+        var countText=picked+" of "+rangeLabel+" picked";
+        if(needMax>0&&!metMin) countText+=" \u2014 pick "+(step.min-picked)+" more";
+        else if(needMax>0&&metMin) countText+=" \u2014 pick more or Skip";
+        else countText+=" \u2713";
+        document.getElementById("stepCount").textContent=countText;
+
+        // Skip enabled only after min is met
+        document.getElementById("btnSkip").disabled=!metMin;
+
+        // Auto-advance if max reached
+        if(needMax<=0){state.stepIdx++;renderStep();return;}
+
+        loadPool(step.id);
+      }
+
+      function loadPool(stepId){
+        var el=document.getElementById("poolList");
+        el.innerHTML='<div class="empty-pool">Loading...</div>';
+        google.script.run
+          .withSuccessHandler(function(p){renderPool(p);})
+          .withFailureHandler(function(e){el.innerHTML='<div class="empty-pool">Error: '+e.message+'</div>';})
+          .getStepPool(stepId,state.ct,usedNames(),salRemaining());
+      }
+
+      function renderPool(pool){
+        var el=document.getElementById("poolList");
+        if(!pool||pool.length===0){el.innerHTML='<div class="empty-pool">No eligible drivers. Click Skip.</div>';return;}
+        var html='<div style="font-size:10px;color:#546E7A;margin-bottom:4px">'+pool.length+' eligible \u2014 click Pick to select</div>';
+        pool.forEach(function(d,i){
+          var grp=d.group?' <span style="font-size:9px;padding:1px 4px;border-radius:2px;background:#e0e0e0;color:#333">'+d.group+'</span>':'';
+          html+='<div class="frow"><div class="finfo">'
+            +'<div class="fname">'+d.name+grp+'</div>'
+            +'<div class="fmeta">'+fmt(d.salary)+' \u00b7 P'+d.startPos+' \u00b7 Own '+(d.ownPct*100).toFixed(1)+'%</div>'
+            +'<div class="fstat">'+d.keyLabel+': '+d.keyVal+'</div>'
+            +'</div><button class="btn-sel" onclick="pickDriver('+i+')">Pick</button></div>';
+        });
+        el.innerHTML=html;el._pool=pool;
+      }
+
+      function doStart(){
+        state.ct=document.getElementById("ctSel").value;
+        setStatus("Loading wizard...","info");
+        google.script.run
+          .withSuccessHandler(function(r){
+            if(!r.ok){setStatus(r.msg,"err");return;}
+            state.steps=r.steps;state.stepIdx=0;state.selected=[];
+            state.stepPicks=r.steps.map(function(){return 0;});
+            renderSlots();renderSalary();renderStep();
+            // Build status summary
+            var p=[];
+            r.steps.forEach(function(s){
+              if(s.id==="FILL")p.push("Fill");
+              else{
+                var lbl=s.min===s.max?""+s.max:s.min+"-"+s.max;
+                p.push(lbl+" "+s.label);
+              }
+            });
+            setStatus(r.trackType+" \u2014 "+p.join(" \u2192 "),"ok");
+          })
+          .withFailureHandler(function(e){setStatus("Error: "+e.message,"err");})
+          .startWizard(state.ct);
+      }
+
+      function pickDriver(idx){
+        var pool=document.getElementById("poolList")._pool;
+        if(!pool||idx>=pool.length)return;
+        var d=pool[idx];
+        if(state.selected.length>=6){setStatus("Lineup full.","err");return;}
+        state.selected.push(d);
+        google.script.run.checkDriver(d.rowIdx,true);
+        if(state.stepIdx>=0&&state.stepIdx<state.stepPicks.length){
+          state.stepPicks[state.stepIdx]++;
+          var step=curStep();
+          if(step&&state.stepPicks[state.stepIdx]>=step.max)state.stepIdx++;
+        }
+        renderSlots();renderSalary();renderStep();
+        if(state.selected.length>=6)setStatus("Lineup complete \u2014 click Save!","ok");
+      }
+
+      function doSkip(){
+        var step=curStep();
+        if(!step)return;
+        var picked=state.stepPicks[state.stepIdx]||0;
+        if(picked<step.min){setStatus("Pick at least "+step.min+" first.","err");return;}
+        state.stepIdx++;
+        renderStep();
+      }
+
+      function doBack(){
+        if(state.selected.length===0){setStatus("Nothing to undo.","err");return;}
+        var removed=state.selected.pop();
+        google.script.run.checkDriver(removed.rowIdx,false);
+        recalcStepPicks();
+        renderSlots();renderSalary();renderStep();
+        setStatus("Removed "+removed.name+".","idle");
+      }
+
+      function removeSlot(idx){
+        if(idx>=state.selected.length)return;
+        var d=state.selected[idx];
+        state.selected.splice(idx,1);
+        google.script.run.checkDriver(d.rowIdx,false);
+        recalcStepPicks();
+        renderSlots();renderSalary();renderStep();
+        setStatus("Removed "+d.name+".","idle");
+      }
+
+      function recalcStepPicks(){
+        state.stepPicks=state.steps.map(function(){return 0;});
+        var rem=state.selected.length;
+        for(var s=0;s<state.steps.length&&rem>0;s++){
+          var take=Math.min(rem,state.steps[s].max);
+          state.stepPicks[s]=take;rem-=take;
+        }
+        state.stepIdx=0;
+        for(var s=0;s<state.steps.length;s++){
+          if(state.stepPicks[s]<state.steps[s].max){state.stepIdx=s;return;}
+          state.stepIdx=s+1;
+        }
+      }
+
+      function doSave(){
+        if(state.selected.length===6){
+          setStatus("Saving...","info");
+          var ri=state.selected.map(function(d){return d.rowIdx;});
+          google.script.run
+            .withSuccessHandler(function(r){
+              if(!r.ok){setStatus(r.msg,"err");return;}
+              state.selected=[];state.steps=[];state.stepIdx=-1;state.stepPicks=[];
+              renderSlots();renderSalary();
+              document.getElementById("stepCard").style.display="none";
+              setStatus(r.msg+" Ready for next lineup.","ok");
+            })
+            .withFailureHandler(function(e){setStatus("Error: "+e.message,"err");})
+            .saveLineupByRows(ri);
+        }else{setStatus("Need 6 drivers.","err");}
+      }
+
+      function doSaveByCheckboxes(){
+        setStatus("Saving from checkboxes...","info");
+        google.script.run
+          .withSuccessHandler(function(r){
+            if(!r.ok){setStatus(r.msg,"err");return;}
+            state.selected=[];state.steps=[];state.stepIdx=-1;state.stepPicks=[];
+            renderSlots();renderSalary();
+            document.getElementById("stepCard").style.display="none";
+            setStatus(r.msg,"ok");
+          })
+          .withFailureHandler(function(e){setStatus("Error: "+e.message,"err");})
+          .saveLineup();
+      }
+
+      function doClear(){
+        state.selected=[];state.steps=[];state.stepIdx=-1;state.stepPicks=[];
+        google.script.run.clearAllChecks();
+        renderSlots();renderSalary();
+        document.getElementById("stepCard").style.display="none";
+        setStatus("Cleared.","idle");
+      }
+
+      renderSlots();renderSalary();
+    </script>
+  </body>
+</html>

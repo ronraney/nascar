@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: 'Segoe UI', sans-serif; padding: 10px; background: #f8f9fa; margin: 0; }
+
+      .topbar {
+        background: #1a1a2e; color: #fff; padding: 8px 10px; margin: -10px -10px 10px -10px;
+        font-size: 14px; font-weight: bold;
+      }
+      .topbar span { font-size: 10px; opacity: 0.6; font-weight: normal; }
+
+      .card {
+        border: 1px solid #ddd; padding: 12px; border-radius: 6px;
+        background: white; margin-bottom: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      }
+      .card-dark {
+        border: 1px solid #2a2a4a; padding: 12px; border-radius: 6px;
+        background: #1a1a2e; margin-bottom: 10px; color: white;
+      }
+
+      .card-title {
+        font-size: 9px; font-weight: bold; text-transform: uppercase;
+        letter-spacing: .5px; color: #546E7A; margin-bottom: 6px;
+      }
+      .card-dark .card-title { color: #aaa; }
+
+      label {
+        font-size: 9px; font-weight: bold; color: #888;
+        text-transform: uppercase; display: block; margin-bottom: 3px;
+        letter-spacing: 0.5px;
+      }
+      .card-dark label { color: #aaa; }
+
+      select {
+        width: 100%; padding: 8px; margin-bottom: 10px;
+        border: 1px solid #1a73e8; border-radius: 4px;
+        background: #f0f7ff; font-size: 12px;
+      }
+
+      .val-text { font-size: 13px; font-weight: 600; color: #1a73e8; margin-bottom: 8px; }
+      .val-small { font-size: 10px; color: #ccc; margin-bottom: 6px; font-family: monospace; }
+
+      .stat-row { display: flex; gap: 4px; margin-bottom: 8px; }
+      .stat-box {
+        flex: 1; text-align: center; padding: 6px 3px;
+        background: #16213e; border-radius: 5px;
+      }
+      .stat-box .num { font-size: 16px; font-weight: bold; color: #4ecdc4; }
+      .stat-box .lbl { font-size: 7px; color: #aaa; text-transform: uppercase; margin-top: 2px; }
+
+      /* Group summary — DOM and PD only (ownership-dependent groups shown when active) */
+      .grp-row {
+        display: flex; align-items: center; gap: 6px;
+        padding: 5px 0; border-bottom: 1px solid #eee;
+      }
+      .grp-row:last-child { border-bottom: none; }
+      .grp-badge {
+        font-size: 9px; font-weight: bold; padding: 2px 6px;
+        border-radius: 3px; min-width: 50px; text-align: center;
+        flex-shrink: 0;
+      }
+      .grp-names { font-size: 11px; color: #333; line-height: 1.4; }
+      .grp-empty { font-size: 11px; color: #999; font-style: italic; }
+
+      .bg-dom   { background: #ff6b6b; color: white; }
+      .bg-pd    { background: #4ecdc4; color: white; }
+      .bg-under    { background: #999; color: white; }
+      .bg-cashcore { background: #6c63ff; color: white; }
+
+      .btn {
+        width: 100%; padding: 10px; border: none; border-radius: 5px;
+        font-weight: bold; font-size: 12px; cursor: pointer;
+        transition: opacity 0.2s; margin-bottom: 6px;
+      }
+      .btn:hover { opacity: 0.85; }
+      .btn-refresh  { background: #1a73e8; color: white; }
+      .btn-builder  { background: #4ecdc4; color: #1a1a2e; }
+      .btn-optimize { background: #ff6b6b; color: white; }
+      .btn-report   { background: #f1f3f4; color: #546e7a; font-size: 11px; padding: 8px; }
+      .btn-setup    { background: #e0e0e0; color: #555; font-size: 11px; padding: 8px; }
+
+      .status {
+        font-size: 10px; padding: 4px 8px; border-radius: 3px;
+        text-align: center; min-height: 18px; margin-top: 4px;
+      }
+      .status.ok   { background: #E8F5E9; color: #2e7d32; }
+      .status.err  { background: #FFEBEE; color: #c62828; }
+      .status.info { background: #E3F2FD; color: #1565C0; }
+      .status.idle { background: #f1f3f4; color: #888; }
+
+      .spinner { display: none; text-align: center; padding: 6px; color: #1a73e8; font-size: 11px; }
+    </style>
+  </head>
+  <body>
+
+    <div class="topbar">🏁 Race Control <span>NASCAR DFS</span></div>
+
+    <!-- Race Selection -->
+    <div class="card">
+      <div class="card-title">Race</div>
+      <select id="raceSelect" onchange="updateInfo()">
+        <option value="">-- Choose Race --</option>
+        <? for (var i = 0; i < raceList.length; i++) { ?>
+          <option value="<?= raceList[i] ?>"
+            <?= raceList[i] == currentRace ? 'selected' : '' ?>>
+            <?= raceList[i] ?>
+          </option>
+        <? } ?>
+      </select>
+
+      <label>Track Type</label>
+      <div id="typeText" class="val-text"><?= type ?></div>
+
+      <label>Laps</label>
+      <div id="lapsText" class="val-text"><?= laps ?></div>
+
+      <label>Strategy</label>
+      <div id="stratText" class="val-text"><?= strat ?></div>
+    </div>
+
+    <!-- Model Context -->
+    <div class="card-dark">
+      <div class="card-title">Model Context</div>
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="num" id="domAvailNum"><?= domAvail ?></div>
+          <div class="lbl">Dom Pts Avail</div>
+        </div>
+        <div class="stat-box">
+          <div class="num" id="targetDomNum"><?= targetDoms ?></div>
+          <div class="lbl">Target Doms</div>
+        </div>
+        <div class="stat-box">
+          <div class="num" id="targetPDNum"><?= targetPD ?></div>
+          <div class="lbl">Target PD</div>
+        </div>
+      </div>
+
+      <label>Weight Profile</label>
+      <div id="weightText" class="val-small"><?= weightStr ?></div>
+    </div>
+
+    <!-- Primary Actions -->
+    <button class="btn btn-refresh"  onclick="doRefresh()">▶  Refresh Dashboard</button>
+    <button class="btn btn-builder"  onclick="doBuilder()">🧰  Open Lineup Builder</button>
+    <button class="btn btn-optimize" onclick="doOptimizer()">⚡  Open Optimizer</button>
+
+    <div id="spinner" class="spinner">⏳ Running analysis...</div>
+    <div id="status" class="status idle"></div>
+
+    <!-- Group Summary (populated after refresh) -->
+    <div class="card" id="groupCard" style="display:none">
+      <div class="card-title">Group Summary</div>
+      <div id="groupList"></div>
+    </div>
+
+    <!-- Utility Buttons -->
+    <button class="btn btn-report" onclick="doRefreshReport()">🔄  Refresh Exposure Report</button>
+    <button class="btn btn-setup"  onclick="doSetup()">Reset Sheets</button>
+
+    <script>
+      // ── Race selector ────────────────────────────────
+      function updateInfo() {
+        var race = document.getElementById("raceSelect").value;
+        if (!race) return;
+        setStatus("Loading race data...", "info");
+        google.script.run
+          .withSuccessHandler(function(data) {
+            if (!data) { setStatus("Race not found.", "err"); return; }
+            document.getElementById("typeText").innerText     = data.type;
+            document.getElementById("lapsText").innerText     = data.laps;
+            document.getElementById("stratText").innerText    = data.strat;
+            document.getElementById("weightText").innerText   = data.weights;
+            document.getElementById("domAvailNum").innerText  = data.domAvail;
+            document.getElementById("targetDomNum").innerText = data.targetDoms;
+            document.getElementById("targetPDNum").innerText  = data.targetPD;
+            setStatus("Race loaded. Click Refresh Dashboard.", "ok");
+          })
+          .withFailureHandler(function(e) { setStatus("Error: " + e.message, "err"); })
+          .updateRaceSettings(race);
+      }
+
+      // ── Refresh Dashboard ────────────────────────────
+      function doRefresh() {
+        showSpinner(true);
+        setStatus("", "idle");
+        google.script.run
+          .withSuccessHandler(function() {
+            showSpinner(false);
+            setStatus("Dashboard refreshed.", "ok");
+            loadGroups();
+          })
+          .withFailureHandler(function(e) {
+            showSpinner(false);
+            setStatus("Error: " + e.message, "err");
+          })
+          .runGPPAnalysis();
+      }
+
+      // ── Group Summary ────────────────────────────────
+      function loadGroups() {
+        google.script.run
+          .withSuccessHandler(function(data) {
+            if (!data) return;
+            var card = document.getElementById("groupCard");
+            var el   = document.getElementById("groupList");
+
+            // Active groups only — CORE and LEVERAGE removed
+            var defs = [
+              { key: "DOM",      label: "DOM",   cls: "bg-dom" },
+              { key: "PD",       label: "PD",    cls: "bg-pd" },
+              { key: "CASHCORE", label: "CASH",  cls: "bg-cashcore" },
+              { key: "UNDER",    label: "UNDER", cls: "bg-under" }
+            ];
+
+            var html = "";
+            defs.forEach(function(def) {
+              var names = data.groups[def.key] || [];
+              // Only show UNDER if ownership data is present (non-empty)
+              if (def.key === "UNDER" && names.length === 0) return;
+              html += '<div class="grp-row">'
+                + '<div class="grp-badge ' + def.cls + '">' + def.label + '</div>'
+                + (names.length > 0
+                    ? '<div class="grp-names">' + names.join(", ") + '</div>'
+                    : '<div class="grp-empty">—</div>')
+                + '</div>';
+            });
+
+            html += '<div style="font-size:10px;color:#999;margin-top:6px;text-align:center">'
+              + data.total + ' drivers | ' + data.ungrouped + ' ungrouped</div>';
+
+            el.innerHTML = html;
+            card.style.display = "";
+          })
+          .withFailureHandler(function() {})
+          .getGroupSummary();
+      }
+
+      // ── Open Lineup Builder ──────────────────────────
+      function doBuilder() {
+        google.script.run.showLineupBuilder();
+      }
+
+      // ── Open Optimizer ───────────────────────────────
+      function doOptimizer() {
+        google.script.run.openOptimizer();
+      }
+
+      // ── Refresh Exposure Report ──────────────────────
+      function doRefreshReport() {
+        setStatus("Refreshing report...", "info");
+        google.script.run
+          .withSuccessHandler(function(r) {
+            setStatus(r && r.ok ? "Exposure report updated." : "Nothing to update.", "ok");
+          })
+          .withFailureHandler(function(e) { setStatus("Error: " + e.message, "err"); })
+          .refreshExposureReport();
+      }
+
+      // ── Setup ────────────────────────────────────────
+      function doSetup() {
+        google.script.run
+          .withSuccessHandler(function() { setStatus("Sheets reset.", "ok"); })
+          .setupAllSheets();
+      }
+
+      // ── Helpers ──────────────────────────────────────
+      function showSpinner(show) {
+        document.getElementById("spinner").style.display = show ? "block" : "none";
+      }
+      function setStatus(msg, type) {
+        var s = document.getElementById("status");
+        s.textContent = msg;
+        s.className = "status " + (type || "idle");
+      }
+
+      // Auto-load groups if dashboard already has data
+      loadGroups();
+    </script>
+
+  </body>
+</html>

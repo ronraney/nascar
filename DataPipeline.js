@@ -56,6 +56,7 @@ function loadAllData() {
   // ---- Load all supplementary sources into lookup maps ----
   const loopMap       = loadLoopData(ss, nameMap);
   const avgFinishMap  = loadAvgFinish(ss, nameMap);
+  const avgStartMap   = loadAvgStart(ss, nameMap);
   const ratingsMap    = loadRatings(ss, nameMap);
   const practiceMap   = loadPractice(ss, nameMap);
   const qualifyingMap = loadQualifying(ss, nameMap);
@@ -71,6 +72,7 @@ function loadAllData() {
     const play = playMap[key]       || {};
     const loop = loopMap[key]       || {};
     const hist = avgFinishMap[key]  || {};
+    const avgS = avgStartMap[key]   || {};
     const skill = ratingsMap[key]   || {};
     const prac = practiceMap[key]   || {};
     const qual = qualifyingMap[key] || {};
@@ -127,6 +129,13 @@ function loadAllData() {
 
       // --- Historical Avg Finish (recency-weighted) ---
       histAvgFinish: hist.weightedAvg || 25,
+
+      // --- Historical Avg Start + Site Stats (from Data_Avg_Start) ---
+      histAvgStart:           avgS.avgStart            || 0,
+      histAvgStartFinishDiff: avgS.avgStartFinishDiff  || 0,
+      siteLapsLed:            avgS.siteLapsLed         || 0,
+      siteRaces:              avgS.siteRaces           || 0,
+      siteAvgRating:          avgS.siteAvgRating       || 0,
 
       // --- Historical Skill Rating (recency-weighted) ---
       histSkillRank: skill.weightedAvg || 20,
@@ -611,6 +620,58 @@ function loadAvgFinish(ss, nameMap) {
     };
   }
 
+  return map;
+}
+
+
+/* -------------------------------------------------------
+ *  7b. Avg Start Loader (All-Time Track Stats)
+ *
+ *  Sourced from DriverAverages.com for the current track.
+ *  No recency weighting — all-time stats at this venue.
+ *
+ *  Column structure (0-indexed):
+ *    0: Rank  1: Driver  2: Avg Finish  3: Races
+ *    4: Wins  5: Top 5s  6: Top 10s  7: Top 20s
+ *    8: Laps Led (total)  9: Avg Start  10: Best Finish
+ *    11: Low Finish  12: DNF  13: Avg Rating  14: detail
+ *
+ *  Returns a map: canonicalKey → {
+ *    avgStart, avgStartFinishDiff, siteLapsLed, siteRaces, siteAvgRating
+ *  }
+ * ------------------------------------------------------- */
+
+function loadAvgStart(ss, nameMap) {
+  const sheet = ss.getSheetByName("Data_Avg_Start");
+  if (!sheet) { Logger.log("WARNING: Data_Avg_Start not found."); return {}; }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return {};
+
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const key = resolveKey(row[1], nameMap);
+    if (!key) continue;
+
+    const avgFinish = parseFloat(row[2])  || 0;
+    const races     = parseFloat(row[3])  || 0;
+    const lapsLed   = parseFloat(row[8])  || 0;
+    const avgStart  = parseFloat(row[9])  || 0;
+    const avgRating = parseFloat(row[13]) || 0;
+
+    if (!avgStart && !races) continue;
+
+    map[key] = {
+      avgStart:            avgStart,
+      avgStartFinishDiff:  (avgStart > 0 && avgFinish > 0) ? avgStart - avgFinish : 0,
+      siteLapsLed:         lapsLed,
+      siteRaces:           races,
+      siteAvgRating:       avgRating
+    };
+  }
+
+  Logger.log("Data_Avg_Start loaded: " + Object.keys(map).length + " drivers.");
   return map;
 }
 

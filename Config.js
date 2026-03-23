@@ -160,7 +160,6 @@ function calcDomPointsAvailable(totalLaps, trackType) {
 const GROUP_THRESHOLDS = {
   DOM_MAX_START_POS:  15,
   PD_MIN_START_POS:   20,
-  PD_MAX_SALARY:      7500,
   PD_MIN_PROJ_PD:     8,
   LEVERAGE_MAX_OWN:   15,
   LEVERAGE_MIN_EDGE:  0,
@@ -283,7 +282,7 @@ const DASH_COLS = {
     "Dom Pts", "Dom Rank", "PD Proj",
     "Edge", "Value",
     "Cash Score", "Track Hist",
-    "Notes"
+    "Avg S/F Diff", "Notes"
   ],
 
   COL_CHECK:    1,
@@ -304,8 +303,9 @@ const DASH_COLS = {
   COL_VALUE:    16,
   COL_CASHSCORE: 17,
   COL_TRACKHIST: 18,
-  COL_NOTES:    19,
-  TOTAL_COLS:   19,
+  COL_AVGDIFF:  19,
+  COL_NOTES:    20,
+  TOTAL_COLS:   20,
 
   CASH_HEADER_ROW: 5,
   CASH_DATA_START: 6,

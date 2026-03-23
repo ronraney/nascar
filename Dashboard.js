@@ -120,6 +120,7 @@ function renderGPPTable(drivers, rc) {
     round2(d.value),
     round2(d.cashScore),
     round2(d.trackHistScore),
+    round2(d.histAvgStartFinishDiff),
     d.notes.join(" | ")
   ]);
 
@@ -158,6 +159,15 @@ function renderGPPTable(drivers, rc) {
       dash.getRange(dRow + i, DASH_COLS.COL_DOMRANK)
         .setBackground("#ffe0e0").setFontWeight("bold");
     }
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const diff = rows[i][DASH_COLS.COL_AVGDIFF - 1];
+    let bg = null;
+    if (diff >= 8)       bg = "#E8F5E9";
+    else if (diff >= 4)  bg = "#F1F8E9";
+    else if (diff <= -4) bg = "#FFEBEE";
+    if (bg) dash.getRange(dRow + i, DASH_COLS.COL_AVGDIFF).setBackground(bg);
   }
 
   dash.setColumnWidth(1, 30);
@@ -400,8 +410,9 @@ function readDashboardDrivers() {
       pdProj:   parseFloat(row[DASH_COLS.COL_PD     - 1]) || 0,
       edge:     parseFloat(row[DASH_COLS.COL_EDGE   - 1]) || 0,
       value:    parseFloat(row[DASH_COLS.COL_VALUE  - 1]) || 0,
-      cashScore:      parseFloat(row[DASH_COLS.COL_CASHSCORE - 1]) || 0,
-      trackHistScore: parseFloat(row[DASH_COLS.COL_TRACKHIST  - 1]) || 0
+      cashScore:           parseFloat(row[DASH_COLS.COL_CASHSCORE - 1]) || 0,
+      trackHistScore:      parseFloat(row[DASH_COLS.COL_TRACKHIST  - 1]) || 0,
+      avgStartFinishDiff:  parseFloat(row[DASH_COLS.COL_AVGDIFF   - 1]) || 0
     }))
     .filter(d => d.name.trim() !== "");
 }
@@ -452,10 +463,7 @@ function saveLineupByRows(rowIdxs) {
 function saveLineup() {
   const drivers = readDashboardDrivers();
   const lineup  = drivers.filter(d => d.checked);
-  Logger.log("saveLineup: total drivers=" + drivers.length + " checked=" + lineup.length
-    + " checked names=" + lineup.map(d => d.name).join(", "));
-  if (lineup.length !== 6) return { ok: false, msg: "Need exactly 6 checked drivers, got " + lineup.length
-    + ". Check Apps Script logs for details." };
+  if (lineup.length !== 6) return { ok: false, msg: "Need exactly 6 checked drivers, got " + lineup.length };
   const totalSal = lineup.reduce((s, d) => s + d.salary, 0);
   if (totalSal > CASH_SALARY_CAP) return { ok: false, msg: "Over salary cap: $" + totalSal.toLocaleString() };
   return writeLineup(lineup);
@@ -953,7 +961,10 @@ function runDiagnostics() {
     { label: "Ratings — ≠ default 20",         fn: function(d){ return d.histSkillRank !== 20; },  note: "histSkillRank present" },
     { label: "Green Speed — > 0",              fn: function(d){ return d.histGreenSpeed > 0; },    note: "green flag speed present" },
     { label: "Total Speed — consistency ≠ 50", fn: function(d){ return d.speedConsistency !== 50; }, note: "segment consistency present" },
-    { label: "DK_Salaries — dkAvgFPPG > 0",   fn: function(d){ return d.dkAvgFPPG > 0; },         note: "DK historical FPPG present" }
+    { label: "DK_Salaries — dkAvgFPPG > 0",       fn: function(d){ return d.dkAvgFPPG > 0; },               note: "DK historical FPPG present" },
+    { label: "Avg Start — histAvgStart > 0",        fn: function(d){ return d.histAvgStart > 0; },             note: "avg start position present" },
+    { label: "Avg Start — siteRaces > 0",           fn: function(d){ return d.siteRaces > 0; },               note: "site race count present" },
+    { label: "Avg Start — histAvgStartFinishDiff",  fn: function(d){ return d.histAvgStartFinishDiff !== 0; }, note: "start/finish diff present" }
   ];
 
   for (var i = 0; i < checks.length; i++) {
@@ -1008,6 +1019,23 @@ function runDiagnostics() {
   } else {
     for (var i = 0; i < missingFinish.length; i++) {
       row(missingFinish[i].name, missingFinish[i].histAvgFinish);
+    }
+  }
+
+  head("LOW SITE RACE COUNT (siteRaces < 3 — reduced confidence)");
+  row("Driver", "siteRaces", "histAvgStartFinishDiff", "note");
+  var lowSiteRaces = drivers.filter(function(d){ return d.siteRaces > 0 && d.siteRaces < 3; });
+  var noSiteHistory = drivers.filter(function(d){ return d.siteRaces === 0; });
+  if (lowSiteRaces.length === 0 && noSiteHistory.length === 0) {
+    row("✅ All drivers have 3+ site races");
+  } else {
+    for (var i = 0; i < lowSiteRaces.length; i++) {
+      var d = lowSiteRaces[i];
+      row(d.name, d.siteRaces, d.histAvgStartFinishDiff, "low confidence (0.70 factor)");
+    }
+    for (var i = 0; i < noSiteHistory.length; i++) {
+      var d = noSiteHistory[i];
+      row(d.name, 0, "—", "no site history (fallback pdProj)");
     }
   }
 

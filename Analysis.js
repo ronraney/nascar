@@ -52,30 +52,38 @@ function runAnalysis(data) {
 /* -------------------------------------------------------
  *  2. Dominator Points Calculation
  *
- *  60% iFantasyRace domScore / 40% historical loop data.
- *  Falls back to 100% historical when domScore = 0.
+ *  Five normalized signals weighted and combined.
+ *  Reliability-adjusted by site race count.
+ *  domScore/domLabel from Playability are NOT used here.
  * ------------------------------------------------------- */
 
 function computeDomPoints(drivers, raceContext) {
-  const scheduledLaps = raceContext.laps || 267;
+  const histPctArr    = drivers.map(d => d.histPctLapsLed);
+  const projArr       = drivers.map(d => d.proj);
+  const qualSpeedArr  = drivers.map(d => d.qualSpeed);
+  const histRatingArr = drivers.map(d => d.histRating);
+  const siteLapsArr   = drivers.map(d => d.siteLapsLed);
 
   for (const d of drivers) {
-    const projLapsLed = (d.histPctLapsLed / 100) * scheduledLaps;
-    d._histDomPts = calcDomPoints(projLapsLed, d.histFastLaps);
-  }
+    const histPctNorm    = normalize(d.histPctLapsLed, histPctArr);
+    const projNorm       = normalize(d.proj,           projArr);
+    const qualSpeedNorm  = normalize(d.qualSpeed,      qualSpeedArr);
+    const histRatingNorm = normalize(d.histRating,     histRatingArr);
+    const siteLapsNorm   = normalize(d.siteLapsLed,    siteLapsArr);
 
-  const maxHistDom = Math.max(...drivers.map(d => d._histDomPts), 1);
+    const raw = (histPctNorm    * 0.30)
+              + (projNorm       * 0.25)
+              + (qualSpeedNorm  * 0.20)
+              + (histRatingNorm * 0.15)
+              + (siteLapsNorm   * 0.10);
 
-  for (const d of drivers) {
-    if (d.domScore > 0) {
-      const ifrDomPts = (d.domScore / 4) * maxHistDom;
-      d.domPts = (ifrDomPts    * 0.60)
-               + (d._histDomPts * 0.40);
-    } else {
-      d.domPts = d._histDomPts;
-    }
-    d.domPts = Math.round(d.domPts * 100) / 100;
-    delete d._histDomPts;
+    let factor;
+    if (d.siteRaces >= 5)      factor = 1.00;
+    else if (d.siteRaces >= 3) factor = 0.85;
+    else if (d.siteRaces >= 1) factor = 0.70;
+    else                       factor = 0.50;
+
+    d.domPts = Math.round(raw * factor * 100) / 100;
   }
 
   const sorted = drivers.slice().sort((a, b) => b.domPts - a.domPts);
@@ -88,25 +96,44 @@ function computeDomPoints(drivers, raceContext) {
 /* -------------------------------------------------------
  *  3. Place Differential Projection
  *
- *  70% iFantasyRace finish projection / 30% historical.
- *  Falls back to 100% historical when no finish proj data.
+ *  Built from our own data — no iFantasyRace finish proj.
+ *  Reliability-adjusted by site race count.
+ *  Drivers with no site history fall back to startPos - 20.
  * ------------------------------------------------------- */
 
 function computePDProjection(drivers) {
-  for (const d of drivers) {
-    const hasIfrFinish = d.finProjLow > 0 || d.finProjHigh > 0;
+  const fieldSize         = drivers.length;
+  const projArr           = drivers.map(d => d.proj);
+  const startArr          = drivers.map(d => d.startPos);
+  const histTop15Arr      = drivers.map(d => d.histTop15Pct);
+  const fieldMedianStart  = percentile(startArr, 50);
 
-    if (hasIfrFinish) {
-      const finProjMid = (d.finProjLow + d.finProjHigh) / 2;
-      const ifrPD      = d.startPos - finProjMid;
-      const histPD     = d.startPos - d.histAvgFinish;
-      d.pdProj = (ifrPD  * 0.70)
-               + (histPD * 0.30);
-    } else {
-      d.pdProj = d.startPos - d.histAvgFinish;
+  for (const d of drivers) {
+    if (d.siteRaces === 0) {
+      d.pdProj = Math.round((d.startPos - 20) * 100) / 100;
+      continue;
     }
 
-    d.pdProj = Math.round(d.pdProj * 100) / 100;
+    const projNorm       = normalize(d.proj, projArr);
+    const impliedFinish  = 1 + (1 - projNorm / 100) * (fieldSize - 1);
+    const projContrib    = d.startPos - impliedFinish;
+
+    const histTop15Norm  = normalize(d.histTop15Pct, histTop15Arr);
+    const histTop15Contrib = (histTop15Norm / 100) * 10;
+
+    const startContrib   = (d.startPos - fieldMedianStart) / 2;
+
+    const raw = (d.histAvgStartFinishDiff * 0.35)
+              + (projContrib              * 0.30)
+              + (histTop15Contrib         * 0.20)
+              + (startContrib             * 0.15);
+
+    let factor;
+    if (d.siteRaces >= 5)      factor = 1.00;
+    else if (d.siteRaces >= 3) factor = 0.85;
+    else                       factor = 0.70;   // siteRaces 1-2
+
+    d.pdProj = Math.round(raw * factor * 100) / 100;
   }
 }
 
@@ -241,7 +268,6 @@ function assignGroups(drivers, raceContext) {
 
     // --- PD VALUE ---
     if (d.startPos >= T.PD_MIN_START_POS
-        && d.salary  <= T.PD_MAX_SALARY
         && d.pdProj  >= T.PD_MIN_PROJ_PD) {
       d.group = "PD";
       continue;

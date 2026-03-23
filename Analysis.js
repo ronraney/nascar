@@ -52,7 +52,7 @@ function runAnalysis(data) {
 /* -------------------------------------------------------
  *  2. Dominator Points Calculation
  *
- *  Five normalized signals weighted and combined.
+ *  Six normalized signals weighted and combined.
  *  Reliability-adjusted by site race count.
  *  domScore/domLabel from Playability are NOT used here.
  * ------------------------------------------------------- */
@@ -64,18 +64,24 @@ function computeDomPoints(drivers, raceContext) {
   const histRatingArr = drivers.map(d => d.histRating);
   const siteLapsArr   = drivers.map(d => d.siteLapsLed);
 
-  for (const d of drivers) {
-    const histPctNorm    = normalize(d.histPctLapsLed, histPctArr);
-    const projNorm       = normalize(d.proj,           projArr);
-    const qualSpeedNorm  = normalize(d.qualSpeed,      qualSpeedArr);
-    const histRatingNorm = normalize(d.histRating,     histRatingArr);
-    const siteLapsNorm   = normalize(d.siteLapsLed,    siteLapsArr);
+  // startPos penalty: logarithmic — P1 gets highest raw penalty value (best)
+  // rawPenalty = 1 / log(startPos + e - 1), then normalize across field
+  const startPenaltyArr = drivers.map(d => 1.0 / Math.log(d.startPos + Math.E - 1));
 
-    const raw = (histPctNorm    * 0.30)
-              + (projNorm       * 0.25)
-              + (qualSpeedNorm  * 0.20)
-              + (histRatingNorm * 0.15)
-              + (siteLapsNorm   * 0.10);
+  for (const d of drivers) {
+    const histPctNorm      = normalize(d.histPctLapsLed, histPctArr);
+    const startPenaltyNorm = normalize(1.0 / Math.log(d.startPos + Math.E - 1), startPenaltyArr);
+    const qualSpeedNorm    = normalize(d.qualSpeed,      qualSpeedArr);
+    const projNorm         = normalize(d.proj,           projArr);
+    const histRatingNorm   = normalize(d.histRating,     histRatingArr);
+    const siteLapsNorm     = normalize(d.siteLapsLed,    siteLapsArr);
+
+    const raw = (histPctNorm      * 0.30)
+              + (startPenaltyNorm * 0.25)
+              + (qualSpeedNorm    * 0.20)
+              + (projNorm         * 0.15)
+              + (histRatingNorm   * 0.10)
+              + (siteLapsNorm     * 0.05);
 
     let factor;
     if (d.siteRaces >= 5)      factor = 1.00;

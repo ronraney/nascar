@@ -593,10 +593,15 @@ function loadAvgFinish(ss, nameMap) {
   const driverIdx = headers.findIndex(h => h && h.toString().toLowerCase().includes("driver"));
   const avgIdx    = headers.findIndex(h => h && h.toString().toLowerCase().includes("avg"));
 
+  if (driverIdx < 0) {
+    Logger.log("ERROR: Data_Avg_Finish missing Driver column. Headers: " + headers.join(", "));
+    return {};
+  }
+
   const map = {};
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const key = resolveKey(row[driverIdx >= 0 ? driverIdx : 1], nameMap);
+    const key = resolveKey(row[driverIdx], nameMap);
     if (!key) continue;
 
     let weightedSum = 0, weightTotal = 0, rawSum = 0, rawCount = 0;
@@ -630,12 +635,6 @@ function loadAvgFinish(ss, nameMap) {
  *  Sourced from DriverAverages.com for the current track.
  *  No recency weighting — all-time stats at this venue.
  *
- *  Column structure (0-indexed):
- *    0: Rank  1: Driver  2: Avg Finish  3: Races
- *    4: Wins  5: Top 5s  6: Top 10s  7: Top 20s
- *    8: Laps Led (total)  9: Avg Start  10: Best Finish
- *    11: Low Finish  12: DNF  13: Avg Rating  14: detail
- *
  *  Returns a map: canonicalKey → {
  *    avgStart, avgStartFinishDiff, siteLapsLed, siteRaces, siteAvgRating
  *  }
@@ -648,17 +647,38 @@ function loadAvgStart(ss, nameMap) {
   const data = sheet.getDataRange().getValues();
   if (data.length < 2) return {};
 
+  const h  = data[0].map(v => v ? v.toString().trim() : "");
+  const hl = h.map(v => v.toLowerCase());
+
+  function findCol(target) {
+    return hl.findIndex(col => col.includes(target));
+  }
+
+  const idx = {
+    driver:    findCol("driver"),
+    avgFinish: findCol("avg finish"),
+    races:     findCol("races"),
+    lapsLed:   findCol("laps led"),
+    avgStart:  findCol("avg start"),
+    avgRating: findCol("avg rating")
+  };
+
+  if (idx.driver < 0) {
+    Logger.log("ERROR: Data_Avg_Start missing Driver column. Headers: " + h.join(", "));
+    return {};
+  }
+
   const map = {};
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const key = resolveKey(row[1], nameMap);
+    const key = resolveKey(row[idx.driver], nameMap);
     if (!key) continue;
 
-    const avgFinish = parseFloat(row[2])  || 0;
-    const races     = parseFloat(row[3])  || 0;
-    const lapsLed   = parseFloat(row[8])  || 0;
-    const avgStart  = parseFloat(row[9])  || 0;
-    const avgRating = parseFloat(row[13]) || 0;
+    const avgFinish = idx.avgFinish >= 0 ? (parseFloat(row[idx.avgFinish]) || 0) : 0;
+    const races     = idx.races     >= 0 ? (parseFloat(row[idx.races])     || 0) : 0;
+    const lapsLed   = idx.lapsLed   >= 0 ? (parseFloat(row[idx.lapsLed])   || 0) : 0;
+    const avgStart  = idx.avgStart  >= 0 ? (parseFloat(row[idx.avgStart])  || 0) : 0;
+    const avgRating = idx.avgRating >= 0 ? (parseFloat(row[idx.avgRating]) || 0) : 0;
 
     if (!avgStart && !races) continue;
 
@@ -696,10 +716,15 @@ function loadRatings(ss, nameMap) {
     return v.includes("average") || v.includes("avg");
   });
 
+  if (driverIdx < 0) {
+    Logger.log("ERROR: Data_Ratings missing Driver column. Headers: " + headers.join(", "));
+    return {};
+  }
+
   const map = {};
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
-    const key = resolveKey(row[driverIdx >= 0 ? driverIdx : 1], nameMap);
+    const key = resolveKey(row[driverIdx], nameMap);
     if (!key) continue;
 
     let weightedSum = 0, weightTotal = 0;
@@ -743,12 +768,17 @@ function loadPractice(ss, nameMap) {
   const nameIdx  = h.findIndex(col => col && col.toString().toLowerCase().includes("driver"));
   const speedIdx = h.findIndex(col => col && col.toString().toLowerCase().includes("speed"));
 
+  if (nameIdx < 0) {
+    Logger.log("ERROR: practice_1 missing Driver column. Headers: " + h.map(v => v.toString()).join(", "));
+    return {};
+  }
+
   const map = {};
   for (let i = 1; i < data.length; i++) {
-    const key = resolveKey(data[i][nameIdx >= 0 ? nameIdx : 0], nameMap);
+    const key = resolveKey(data[i][nameIdx], nameMap);
     if (!key) continue;
     map[key] = {
-      bestTime: parseFloat(data[i][speedIdx >= 0 ? speedIdx : 6]) || 0
+      bestTime: speedIdx >= 0 ? (parseFloat(data[i][speedIdx]) || 0) : 0
     };
   }
 
@@ -773,13 +803,18 @@ function loadQualifying(ss, nameMap) {
   const carIdx    = h.findIndex(col => col && col.toString().toLowerCase().includes("car"));
   const speedIdx  = h.findIndex(col => col && col.toString().toLowerCase().includes("speed"));
 
+  if (driverIdx < 0) {
+    Logger.log("ERROR: qualifying_1 missing Driver column. Headers: " + h.map(v => v.toString()).join(", "));
+    return {};
+  }
+
   const map = {};
   for (let i = 1; i < data.length; i++) {
-    const key = resolveKey(data[i][driverIdx >= 0 ? driverIdx : 1], nameMap);
+    const key = resolveKey(data[i][driverIdx], nameMap);
     if (!key) continue;
     map[key] = {
-      speed: parseFloat(data[i][speedIdx >= 0 ? speedIdx : 5]) || 0,
-      car:   data[i][carIdx >= 0 ? carIdx : 3] || ""
+      speed: speedIdx >= 0 ? (parseFloat(data[i][speedIdx]) || 0) : 0,
+      car:   carIdx   >= 0 ? (data[i][carIdx] || "")           : ""
     };
   }
 

@@ -909,7 +909,7 @@ function loadTotalSpeed(ss, nameMap) {
   const hl = h.map(v => v.toLowerCase());
 
   const driverIdx  = hl.findIndex(col => col === "driver");
-  const avgRankIdx = hl.findIndex(col => col === "avg. speed rank");
+  const avgRankIdx = hl.findIndex(col => col.includes("avg. speed rank"));
 
   // Segment columns start with "#"
   const segIdxs = [];

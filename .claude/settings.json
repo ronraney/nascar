@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(clasp pull:*)",
+      "Bash(git -C //wsl.localhost/Ubuntu/home/raney/nascar diff DataPipeline.js)",
+      "Bash(git -C /home/raney/nascar diff DataPipeline.js)",
+      "Bash(git -C /home/raney/nascar branch -a)",
+      "Bash(git -C /home/raney/nascar log --oneline -5)",
+      "Bash(git -C \"//wsl.localhost/Ubuntu/home/raney/nascar\" branch -a)",
+      "Bash(git -C \"//wsl.localhost/Ubuntu/home/raney/nascar\" log --oneline -5)"
+    ],
+    "additionalDirectories": [
+      "\\home\\raney\\nascar",
+      "\\\\wsl.localhost\\Ubuntu\\home\\raney\\nascar"
+    ]
+  }
+}

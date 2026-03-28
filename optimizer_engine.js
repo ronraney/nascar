@@ -2,17 +2,21 @@
  * ============================================================
  *  NASCAR DFS 2026 — Optimizer
  * ============================================================
- *  Generates up to 20 GPP lineups using adjProj (or ceiling)
- *  as the projection base. Bell-curve randomization creates
- *  lineup diversity.
+ *  Enumerate-first architecture:
+ *    1. Build every valid C(n,6) lineup once (salary ≤ $50,000).
+ *       Pre-compute base score and uniqueness key. Done once per run.
+ *    2. Select lineups one at a time — for each slot, generate a
+ *       fresh gaussian noise map, then linear-scan all candidates
+ *       to find the highest-scoring valid one under that noise
+ *       realization, skipping used lineups and capped drivers.
  *
- *  No forced group slots — pure score-driven selection.
+ *  No attempt loop. No cap loosening. No greedy buildLineup.
+ *
  *  Exposure caps are based on wizard pool membership:
- *
  *    DOM   (d.group === "DOM")              → 65% default
  *    PD    (d.group === "PD")               → 50% default
- *    PUNT  (!d.group, salary ≤ $8,500)      → 35% default
- *    FILL  (everything else)                → 20% default
+ *    PUNT  (!d.group, salary $6,000–$8,500) → 35% default
+ *    FILL  (everything else)                → 15% default
  *
  *  User can adjust each pool cap in the sidebar.
  *  Global max exposure slider is the ceiling over all pools.
@@ -24,7 +28,6 @@
 
 const OPT_SALARY_CAP  = 50000;
 const OPT_ROSTER_SIZE = 6;
-const OPT_MIN_SALARY  = 4500;
 
 
 /* -------------------------------------------------------
@@ -65,7 +68,7 @@ function openOptimizer() {
  *  Mirrors the wizard pool structure:
  *    DOM   → group === "DOM"
  *    PD    → group === "PD"
- *    PUNT  → ungrouped, salary ≤ $8,500 (covers both punt/dart)
+ *    PUNT  → ungrouped, salary $6,000–$8,500
  *    FILL  → everything else
  *
  *  User-supplied poolCaps override defaults.
@@ -77,14 +80,12 @@ function getPoolCap(d, poolCaps, totalLineups, globalMax) {
     DOM:  0.65,
     PD:   0.50,
     PUNT: 0.35,
-    FILL: 0.15   // hard cap — backmarkers capped at ~3/20 lineups
+    FILL: 0.15
   };
 
   let poolKey;
   if (d.group === "DOM")     poolKey = "DOM";
   else if (d.group === "PD") poolKey = "PD";
-  // PUNT: ungrouped value plays in realistic punt range ($6,000-$8,500)
-  // Below $6,000 = backmarker territory → FILL cap regardless of salary
   else if (!d.group && d.salary >= 6000 && d.salary <= 8500) poolKey = "PUNT";
   else poolKey = "FILL";
 
@@ -109,80 +110,69 @@ function gaussianRandom(mean, stdDev) {
   return mean + z * stdDev;
 }
 
-function applyNoise(drivers, optimizeBy, noiseLevel) {
-  return drivers.map(d => {
-    const base = optimizeBy === "ceiling"
-      ? (d.ceiling || d.adjProj)
-      : d.adjProj;
-    const noise = noiseLevel > 0 ? gaussianRandom(1.0, noiseLevel) : 1.0;
-    const mult  = Math.max(0.5, Math.min(2.0, noise));
-    return Object.assign({}, d, { _score: base * mult });
-  });
+
+/* -------------------------------------------------------
+ *  4. Per-Driver Base Projection
+ * ------------------------------------------------------- */
+
+function getBaseProj(d, optimizeBy) {
+  return optimizeBy === "ceiling" ? (d.ceiling || d.adjProj) : d.adjProj;
 }
 
 
 /* -------------------------------------------------------
- *  4. Lineup Builder (Single Attempt)
+ *  5. Combination Helper
  *
- *  Pure score-sort with pool-based exposure caps.
- *  No forced group slots.
+ *  Returns all k-length index combinations of arr.
  * ------------------------------------------------------- */
 
-function buildLineup(drivers, settings, exposureCounts, totalLineups, loosenFactor) {
-  const lf        = loosenFactor || 1.0;
-  const globalMax = settings.maxExposure || 0.65;
-  const poolCaps  = settings.poolCaps || {};
-  const lineup    = [];
-  let   salaryUsed = 0;
-
-  function isAtCap(d) {
-    if (totalLineups <= 1) return false;
-    // LoosenFactor only relaxes DOM and PD caps when the optimizer is struggling.
-    // PUNT and FILL caps are hard — backmarkers should never slip in via loosening.
-    const poolKey = d.group === "DOM" ? "DOM" :
-                    d.group === "PD"  ? "PD"  : "FIXED";
-    const appliedLF = (poolKey === "FIXED") ? 1.0 : lf;
-    const cap = getPoolCap(d, poolCaps, totalLineups, globalMax) * appliedLF;
-    return (exposureCounts[d.name] || 0) >= Math.ceil(cap);
+function getCombinations(arr, k) {
+  const result = [];
+  function recurse(start, current) {
+    if (current.length === k) { result.push(current.slice()); return; }
+    for (let i = start; i <= arr.length - (k - current.length); i++) {
+      current.push(arr[i]);
+      recurse(i + 1, current);
+      current.pop();
+    }
   }
-
-  function salaryFits(d) {
-    const slotsLeft = OPT_ROSTER_SIZE - lineup.length;
-    const remaining = OPT_SALARY_CAP - salaryUsed;
-    if (d.salary > remaining) return false;
-    if (slotsLeft > 1 && (remaining - d.salary) < (slotsLeft - 1) * OPT_MIN_SALARY) return false;
-    return true;
-  }
-
-  // Sort by score descending, fill 6 slots
-  const sorted = drivers.slice().sort((a, b) => b._score - a._score);
-
-  for (const d of sorted) {
-    if (lineup.length >= OPT_ROSTER_SIZE) break;
-    if (isAtCap(d)) continue;
-    if (!salaryFits(d)) continue;
-    lineup.push(d);
-    salaryUsed += d.salary;
-  }
-
-  return lineup.length === OPT_ROSTER_SIZE ? lineup : null;
+  recurse(0, []);
+  return result;
 }
 
 
 /* -------------------------------------------------------
- *  5. Lineup Uniqueness Check
+ *  6. Enumerate All Valid Lineups
+ *
+ *  Builds every C(n,6) combination from the driver pool,
+ *  filters to those under the salary cap, and pre-computes
+ *  each lineup's base projection score and uniqueness key.
+ *  Called once per run.
  * ------------------------------------------------------- */
 
-function lineupKey(lineup) {
-  return lineup.map(d => d.name).sort().join("|");
+function enumerateLineups(drivers, optimizeBy) {
+  const indices = drivers.map((_, i) => i);
+  const combos  = getCombinations(indices, OPT_ROSTER_SIZE);
+  const valid   = [];
+
+  for (const combo of combos) {
+    const lineup = combo.map(i => drivers[i]);
+    const salary = lineup.reduce((s, d) => s + d.salary, 0);
+    if (salary > OPT_SALARY_CAP) continue;
+    const score = lineup.reduce((s, d) => s + getBaseProj(d, optimizeBy), 0);
+    const key   = lineup.map(d => d.name).sort().join("|");
+    valid.push({ lineup, score, salary, key });
+  }
+
+  return valid;
 }
 
 
 /* -------------------------------------------------------
- *  6. Main Optimizer
+ *  7. Main Optimizer
  *
  *  settings object:
- *    count            {number}   lineups to generate (1-20)
+ *    count            {number}   lineups to generate (1-150)
  *    optimizeBy       {string}   'adjProj' | 'ceiling'
  *    noiseLevel       {number}   0.0-0.50
  *    maxExposure      {number}   0.10-1.0 global ceiling
@@ -203,8 +193,8 @@ function generateLineups(settings) {
   const config = ss.getSheetByName("Model_Config");
   if (!config) return { ok: false, msg: "Model_Config sheet missing." };
 
-  const count       = Math.min(Math.max(parseInt(settings.count) || 20, 1), 20);
-  const noiseLevel  = parseFloat(settings.noiseLevel)  || 0.15;
+  const count       = Math.min(Math.max(parseInt(settings.count) || 20, 1), 150);
+  const noiseLevel  = parseFloat(settings.noiseLevel)  || 0;
   const optimizeBy  = settings.optimizeBy || "adjProj";
   const maxExposure = parseFloat(settings.maxExposure) || 0.65;
   const poolCaps    = settings.poolCaps || {};
@@ -212,39 +202,61 @@ function generateLineups(settings) {
   const minNames    = settings.minExposureNames || [];
   const minCount    = parseInt(settings.minExposureCount) || 0;
 
+  // Enumerate all valid candidates once
+  const candidates     = enumerateLineups(allDrivers, optimizeBy);
   const lineups        = [];
   const seenKeys       = new Set();
   const exposureCounts = {};
-  let   attempts       = 0;
-  const maxAttempts    = count * 300;
 
-  while (lineups.length < count && attempts < maxAttempts) {
-    attempts++;
-
-    const loosenFactor = attempts > maxAttempts * 0.60 ? 1.75 :
-                         attempts > maxAttempts * 0.30 ? 1.35 : 1.0;
-
-    const noisyDrivers = applyNoise(allDrivers, optimizeBy, noiseLevel);
-    const lineup = buildLineup(noisyDrivers, settings, exposureCounts, count, loosenFactor);
-    if (!lineup) continue;
-
-    const key = lineupKey(lineup);
-    if (seenKeys.has(key)) continue;
-
-    // Min unique check — new lineup must differ from every existing lineup
-    // by at least minUnique drivers
-    if (minUnique > 0) {
-      const newNames = new Set(lineup.map(d => d.name));
-      const tooSimilar = lineups.some(function(existing) {
-        var overlap = existing.filter(function(d) { return newNames.has(d.name); }).length;
-        return (OPT_ROSTER_SIZE - overlap) < minUnique;
+  for (let i = 0; i < count; i++) {
+    // Fresh per-driver noise map for this lineup slot
+    const noiseMap = {};
+    if (noiseLevel > 0) {
+      allDrivers.forEach(d => {
+        const mult = Math.max(0.5, Math.min(2.0, gaussianRandom(1.0, noiseLevel)));
+        noiseMap[d.name] = getBaseProj(d, optimizeBy) * mult;
       });
-      if (tooSimilar) continue;
     }
 
-    seenKeys.add(key);
-    lineups.push(lineup);
-    lineup.forEach(d => {
+    // Linear scan: find the highest-scoring valid candidate
+    let bestScore     = -Infinity;
+    let bestCandidate = null;
+
+    for (const candidate of candidates) {
+      if (seenKeys.has(candidate.key)) continue;
+
+      // Exposure cap check
+      const capped = candidate.lineup.some(d => {
+        const cap = getPoolCap(d, poolCaps, count, maxExposure);
+        return (exposureCounts[d.name] || 0) >= cap;
+      });
+      if (capped) continue;
+
+      // Min unique check
+      if (minUnique > 0) {
+        const newNames = new Set(candidate.lineup.map(d => d.name));
+        const tooSimilar = lineups.some(existing => {
+          const overlap = existing.filter(d => newNames.has(d.name)).length;
+          return (OPT_ROSTER_SIZE - overlap) < minUnique;
+        });
+        if (tooSimilar) continue;
+      }
+
+      const score = noiseLevel > 0
+        ? candidate.lineup.reduce((s, d) => s + (noiseMap[d.name] || getBaseProj(d, optimizeBy)), 0)
+        : candidate.score;
+
+      if (score > bestScore) {
+        bestScore     = score;
+        bestCandidate = candidate;
+      }
+    }
+
+    if (!bestCandidate) break;
+
+    seenKeys.add(bestCandidate.key);
+    lineups.push(bestCandidate.lineup);
+    bestCandidate.lineup.forEach(d => {
       exposureCounts[d.name] = (exposureCounts[d.name] || 0) + 1;
     });
   }
@@ -254,7 +266,7 @@ function generateLineups(settings) {
   }
 
   // Write to Lineups sheet
-  const trackType  = config.getRange("B2").getValue() || "Unknown";
+  const trackType   = config.getRange("B2").getValue() || "Unknown";
   const raceContext = { raceName: config.getRange("B1").getValue() || "Unknown", trackType };
   writeOptimizerLineups(ss, lineups, raceContext);
 
@@ -266,7 +278,7 @@ function generateLineups(settings) {
     .join("\n");
 
   let msg = "✅ Generated " + lineups.length + " lineup" + (lineups.length > 1 ? "s" : "")
-          + " | " + attempts + " attempts\n"
+          + " from " + candidates.length + " salary-legal combinations\n"
           + "Track: " + trackType
           + (minUnique > 0 ? " | Min unique: " + minUnique : "")
           + "\n\nExposure:\n" + expLines;
@@ -289,7 +301,7 @@ function generateLineups(settings) {
 
 
 /* -------------------------------------------------------
- *  7. DK Name+ID Lookup Builder
+ *  8. DK Name+ID Lookup Builder
  * ------------------------------------------------------- */
 
 function buildDkIdMap(ss) {
@@ -317,7 +329,7 @@ function buildDkIdMap(ss) {
 
 
 /* -------------------------------------------------------
- *  8. Write Lineups to Lineups Sheet
+ *  9. Write Lineups to Lineups Sheet
  * ------------------------------------------------------- */
 
 function writeOptimizerLineups(ss, lineups, raceContext) {
@@ -373,7 +385,7 @@ function writeOptimizerLineups(ss, lineups, raceContext) {
 
 
 /* -------------------------------------------------------
- *  9. Lineups Exposure Report (Cols J-K)
+ *  10. Lineups Exposure Report (Cols J-K)
  * ------------------------------------------------------- */
 
 function updateLineupsExposure(ss, sheet) {

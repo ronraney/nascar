@@ -274,7 +274,8 @@ function assignGroups(drivers, raceContext) {
 
     // --- PD VALUE ---
     if (d.startPos >= T.PD_MIN_START_POS
-        && d.pdProj  >= T.PD_MIN_PROJ_PD) {
+        && d.pdProj  >= T.PD_MIN_PROJ_PD
+        && d.histAvgStartFinishDiff > 0) {
       d.group = "PD";
       continue;
     }

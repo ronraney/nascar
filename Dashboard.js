@@ -492,9 +492,14 @@ function writeLineup(lineup) {
     sheet.setFrozenRows(1);
   }
 
-  const totalSal  = lineup.reduce((s, d) => s + d.salary, 0);
-  const totalProj = Math.round(lineup.reduce((s, d) => s + (d.adjProj || 0), 0) * 10) / 10;
-  const names     = lineup.map(d => d.name);
+  const dkIdMap = buildDkIdMap(ss);
+  function dkLabel(d) {
+    return dkIdMap[cleanName(d.name)] || d.name;
+  }
+
+  const sorted    = lineup.slice().sort((a, b) => b.salary - a.salary);
+  const totalSal  = sorted.reduce((s, d) => s + d.salary, 0);
+  const totalProj = Math.round(sorted.reduce((s, d) => s + (d.adjProj || 0), 0) * 10) / 10;
   const now       = new Date().toLocaleString();
 
   const colA  = sheet.getRange(1, 1, sheet.getMaxRows(), 1).getValues();
@@ -504,8 +509,8 @@ function writeLineup(lineup) {
   }
 
   sheet.getRange(nextRow, 1, 1, 9).setValues([[
-    names[0] || "", names[1] || "", names[2] || "",
-    names[3] || "", names[4] || "", names[5] || "",
+    dkLabel(sorted[0]), dkLabel(sorted[1]), dkLabel(sorted[2]),
+    dkLabel(sorted[3]), dkLabel(sorted[4]), dkLabel(sorted[5]),
     totalSal, totalProj, now
   ]]);
 

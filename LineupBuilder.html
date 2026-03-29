@@ -74,6 +74,7 @@
         <button class="btn btn-clear" onclick="doClear()">Clear</button>
       </div>
       <button class="btn btn-save" style="width:100%;margin-top:5px;background:#546E7A;font-size:10px" onclick="doSaveByCheckboxes()">Save by Dashboard Checkboxes</button>
+      <button class="btn" style="width:100%;margin-top:5px;background:#37474F;color:#fff;font-size:10px" onclick="doSyncFromChecked()">Sync Salary from Checkboxes</button>
       <div class="status idle" id="status">Select contest type and click Start Building.</div>
     </div>
 
@@ -313,6 +314,24 @@
           })
           .withFailureHandler(function(e){setStatus("Error: "+e.message,"err");})
           .saveLineup();
+      }
+
+      function doSyncFromChecked(){
+        setStatus("Reading checkboxes...","info");
+        google.script.run
+          .withSuccessHandler(function(r){
+            var used=r.total,rem=SALARY_CAP-used;
+            document.getElementById("vCnt").textContent=r.count+" / 6";
+            document.getElementById("vSal").textContent=fmt(used);
+            document.getElementById("vRem").textContent=fmt(rem);
+            var warn=used>SALARY_CAP||r.count>6;
+            document.getElementById("scnt").className="sal-box"+(warn?" warn":"");
+            document.getElementById("ssal").className="sal-box"+(warn?" warn":" ok");
+            document.getElementById("srem").className="sal-box"+(warn?" warn":"");
+            setStatus(r.count+" checked \u2014 $"+used.toLocaleString()+" used, $"+rem.toLocaleString()+" remaining.","ok");
+          })
+          .withFailureHandler(function(e){setStatus("Error: "+e.message,"err");})
+          .getCheckedSalary();
       }
 
       function doClear(){

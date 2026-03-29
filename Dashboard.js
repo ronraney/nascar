@@ -425,6 +425,17 @@ function checkDriver(rowIdx, checked) {
   return { ok: true };
 }
 
+function getCheckedSalary() {
+  const drivers = readDashboardDrivers();
+  const checked = drivers.filter(d => d.checked);
+  const total   = checked.reduce((s, d) => s + d.salary, 0);
+  return {
+    total:   total,
+    count:   checked.length,
+    drivers: checked.map(d => ({ name: d.name, salary: d.salary }))
+  };
+}
+
 function clearAllChecks() {
   const ss    = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName("Dashboard");

@@ -324,8 +324,8 @@ function writeOptimizerLineups(ss, lineups, raceContext) {
   let sheet = ss.getSheetByName("Lineups");
   if (!sheet) {
     sheet = ss.insertSheet("Lineups");
-    sheet.getRange(1, 1, 1, 8)
-      .setValues([["D1", "D2", "D3", "D4", "D5", "D6", "Total Sal", "Saved At"]])
+    sheet.getRange(1, 1, 1, 9)
+      .setValues([["D1", "D2", "D3", "D4", "D5", "D6", "Total Sal", "Total Proj", "Saved At"]])
       .setBackground("#1a1a2e").setFontColor("white").setFontWeight("bold")
       .setFontSize(9).setHorizontalAlignment("center");
   }
@@ -344,18 +344,19 @@ function writeOptimizerLineups(ss, lineups, raceContext) {
 
   const timestamp = new Date().toLocaleString();
   const rows = lineups.map(lineup => {
-    const sorted   = lineup.slice().sort((a, b) => b.salary - a.salary);
-    const totalSal = sorted.reduce((s, d) => s + d.salary, 0);
+    const sorted    = lineup.slice().sort((a, b) => b.salary - a.salary);
+    const totalSal  = sorted.reduce((s, d) => s + d.salary, 0);
+    const totalProj = Math.round(sorted.reduce((s, d) => s + (d.adjProj || 0), 0) * 10) / 10;
     return [
       dkLabel(sorted[0]), dkLabel(sorted[1]), dkLabel(sorted[2]),
       dkLabel(sorted[3]), dkLabel(sorted[4]), dkLabel(sorted[5]),
-      totalSal, timestamp
+      totalSal, totalProj, timestamp
     ];
   });
 
   if (rows.length === 0) return;
 
-  const writeRange = sheet.getRange(nextRow, 1, rows.length, 8);
+  const writeRange = sheet.getRange(nextRow, 1, rows.length, 9);
   writeRange.setValues(rows).setFontSize(9).setHorizontalAlignment("center");
   sheet.getRange(nextRow, 7, rows.length).setNumberFormat("$#,##0");
 

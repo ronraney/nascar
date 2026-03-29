@@ -359,6 +359,7 @@ function writeOptimizerLineups(ss, lineups, raceContext) {
   const writeRange = sheet.getRange(nextRow, 1, rows.length, 9);
   writeRange.setValues(rows).setFontSize(9).setHorizontalAlignment("center");
   sheet.getRange(nextRow, 7, rows.length).setNumberFormat("$#,##0");
+  sheet.getRange(nextRow, 8, rows.length).setNumberFormat("0.0");
 
   for (let i = 0; i < lineups.length; i++) {
     const sorted = lineups[i].slice().sort((a, b) => b.salary - a.salary);

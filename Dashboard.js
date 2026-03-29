@@ -513,6 +513,8 @@ function writeLineup(lineup) {
     dkLabel(sorted[3]), dkLabel(sorted[4]), dkLabel(sorted[5]),
     totalSal, totalProj, now
   ]]);
+  sheet.getRange(nextRow, 7).setNumberFormat("$#,##0");
+  sheet.getRange(nextRow, 8).setNumberFormat("0.0");
 
   updateExposureReport(sheet);
   clearAllChecks();

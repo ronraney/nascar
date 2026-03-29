@@ -273,9 +273,10 @@ function assignGroups(drivers, raceContext) {
     }
 
     // --- PD VALUE ---
-    if (d.startPos >= T.PD_MIN_START_POS
-        && d.pdProj  >= T.PD_MIN_PROJ_PD
-        && d.histAvgStartFinishDiff > 0) {
+    // Qualifies via current projection OR proven track history
+    const pdByProj    = d.pdProj >= T.PD_MIN_PROJ_PD;
+    const pdByHistory = d.histAvgStartFinishDiff >= 5 && d.startPos >= T.PD_MIN_START_POS;
+    if (pdByProj || pdByHistory) {
       d.group = "PD";
       continue;
     }

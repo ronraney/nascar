@@ -735,7 +735,7 @@ function getStepPool(stepId, contestType, usedNames, salaryRemaining) {
   }
 
   if (stepId === "PD") {
-    var pool = drivers.filter(d => canAfford(d) && d.pdProj > 0);
+    var pool = drivers.filter(d => canAfford(d) && d.group === "PD");
     if (isCash) {
       // Cash: deprioritize drivers with no historical avg finish data (histAvgFinish = 25 default)
       // No track history = unreliable floor estimate = poor cash play

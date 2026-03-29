@@ -322,8 +322,8 @@ function buildDkIdMap(ss) {
 
 function writeOptimizerLineups(ss, lineups, raceContext) {
   let sheet = ss.getSheetByName("Lineups");
-  if (!sheet) {
-    sheet = ss.insertSheet("Lineups");
+  if (!sheet) sheet = ss.insertSheet("Lineups");
+  if (sheet.getRange(1, 8).getValue() !== "Total Proj") {
     sheet.getRange(1, 1, 1, 9)
       .setValues([["D1", "D2", "D3", "D4", "D5", "D6", "Total Sal", "Total Proj", "Saved At"]])
       .setBackground("#1a1a2e").setFontColor("white").setFontWeight("bold")

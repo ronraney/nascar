@@ -647,7 +647,7 @@ function loadAvgStart(ss, nameMap) {
   const data = sheet.getDataRange().getValues();
   if (data.length < 2) return {};
 
-  const h  = data[0].map(v => v ? v.toString().trim().replace(/\s+/g, ' ') : "");
+  const h  = data[0].map(v => v ? v.toString().trim() : "");
   const hl = h.map(v => v.toLowerCase());
 
   function findCol(target) {

@@ -7,7 +7,22 @@
       "Bash(git -C /home/raney/nascar branch -a)",
       "Bash(git -C /home/raney/nascar log --oneline -5)",
       "Bash(git -C \"//wsl.localhost/Ubuntu/home/raney/nascar\" branch -a)",
-      "Bash(git -C \"//wsl.localhost/Ubuntu/home/raney/nascar\" log --oneline -5)"
+      "Bash(git -C \"//wsl.localhost/Ubuntu/home/raney/nascar\" log --oneline -5)",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git add Analysis.js && git commit -m ''Disqualify negative histAvgStartFinishDiff from PD group:*)",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git push origin main && clasp push\")",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git add Analysis.js && git commit -m ''Fix PD qualification: accept by projection OR proven track history:*)",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git status && git branch -a && git log --oneline -5\")",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git push origin --delete dev-v2.1-changes dev/0326 refactor/header-lookup\")",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git push origin --delete dev-v2.1-changes dev/0326 && git remote prune origin\")",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git push origin --delete dev-v2.1-changes\")",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git branch -r\")",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git add Analysis.js && git commit -m ''Gate pdByProj on histAvgStartFinishDiff > 0:*)",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git add Dashboard.js && git commit -m ''Fix lineup builder PD pool to filter by group === PD:*)",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git add Dashboard.js && git commit -m ''Fix lineup builder DOM pool to filter by group === DOM:*)",
+      "Bash(wsl -e bash -c \"grep -n ''count\\\\|lineup\\\\|max'' ~/nascar/Optimizer.html | head -40\")",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git add optimizer_engine.js Optimizer.html && git commit -m ''Raise optimizer lineup cap from 20 to 150:*)",
+      "Bash(wsl -e bash -c \"grep -n ''Lineups\\\\|setValues\\\\|name\\\\|sheet\\\\b'' ~/nascar/optimizer_engine.js | head -50\")",
+      "Bash(wsl -e bash -c \"cd ~/nascar && git add optimizer_engine.js && git commit -m ''Auto-update Lineups header when Total Proj column is missing:*)"
     ],
     "additionalDirectories": [
       "\\home\\raney\\nascar",

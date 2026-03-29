@@ -234,8 +234,8 @@ function setupAllSheets() {
 
   const lineups = ss.getSheetByName("Lineups");
   if (lineups.getRange(1, 1).getValue() !== "D1") {
-    lineups.getRange(1, 1, 1, 8).setValues([[
-      "D1", "D2", "D3", "D4", "D5", "D6", "Total Sal", "Saved At"
+    lineups.getRange(1, 1, 1, 9).setValues([[
+      "D1", "D2", "D3", "D4", "D5", "D6", "Total Sal", "Total Proj", "Saved At"
     ]]).setBackground("#1a1a2e").setFontColor("white").setFontWeight("bold");
     lineups.setFrozenRows(1);
   }
@@ -486,15 +486,16 @@ function writeLineup(lineup) {
   if (!sheet) sheet = ss.insertSheet("Lineups");
 
   if (sheet.getRange(1, 1).getValue() !== "D1") {
-    sheet.getRange(1, 1, 1, 8).setValues([[
-      "D1", "D2", "D3", "D4", "D5", "D6", "Total Sal", "Saved At"
+    sheet.getRange(1, 1, 1, 9).setValues([[
+      "D1", "D2", "D3", "D4", "D5", "D6", "Total Sal", "Total Proj", "Saved At"
     ]]).setBackground("#1a1a2e").setFontColor("white").setFontWeight("bold");
     sheet.setFrozenRows(1);
   }
 
-  const totalSal = lineup.reduce((s, d) => s + d.salary, 0);
-  const names    = lineup.map(d => d.name);
-  const now      = new Date().toLocaleString();
+  const totalSal  = lineup.reduce((s, d) => s + d.salary, 0);
+  const totalProj = Math.round(lineup.reduce((s, d) => s + (d.adjProj || 0), 0) * 10) / 10;
+  const names     = lineup.map(d => d.name);
+  const now       = new Date().toLocaleString();
 
   const colA  = sheet.getRange(1, 1, sheet.getMaxRows(), 1).getValues();
   let nextRow = 2;
@@ -502,10 +503,10 @@ function writeLineup(lineup) {
     if (String(colA[i][0]).trim() !== "") { nextRow = i + 2; break; }
   }
 
-  sheet.getRange(nextRow, 1, 1, 8).setValues([[
+  sheet.getRange(nextRow, 1, 1, 9).setValues([[
     names[0] || "", names[1] || "", names[2] || "",
     names[3] || "", names[4] || "", names[5] || "",
-    totalSal, now
+    totalSal, totalProj, now
   ]]);
 
   updateExposureReport(sheet);

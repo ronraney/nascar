@@ -722,7 +722,7 @@ function getStepPool(stepId, contestType, usedNames, salaryRemaining) {
   }
 
   if (stepId === "DOM") {
-    var pool = drivers.filter(d => canAfford(d) && d.domPts > 0 && d.startPos <= 20);
+    var pool = drivers.filter(d => canAfford(d) && d.group === "DOM");
     if (isCash) pool.sort((a, b) => (b.domPts + b.floor) - (a.domPts + a.floor));
     else pool.sort((a, b) => (b.domPts + b.ceiling + b.edge) - (a.domPts + a.ceiling + a.edge));
     return pool.slice(0, 10).map(d => {

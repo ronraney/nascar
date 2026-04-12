@@ -647,7 +647,7 @@ function loadAvgStart(ss, nameMap) {
   const data = sheet.getDataRange().getValues();
   if (data.length < 2) return {};
 
-  const h  = data[0].map(v => v ? v.toString().trim() : "");
+  const h  = data[0].map(v => v ? v.toString().trim().replace(/\s+/g, " ") : "");
   const hl = h.map(v => v.toLowerCase());
 
   function findCol(target) {
@@ -656,11 +656,11 @@ function loadAvgStart(ss, nameMap) {
 
   const idx = {
     driver:    findCol("driver"),
-    avgFinish: findCol("avg finish"),
+    avgFinish: findCol("avg fin"),      // matches "Avg Fin", "Avg Finish", "Avg\nFinish"
     races:     findCol("races"),
     lapsLed:   findCol("laps led"),
     avgStart:  findCol("avg start"),
-    avgRating: findCol("avg rating")
+    avgRating: findCol("rating")
   };
 
   if (idx.driver < 0) {

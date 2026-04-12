@@ -275,7 +275,8 @@ function assignGroups(drivers, raceContext) {
     // --- PD VALUE ---
     // Qualifies via current projection OR proven track history
     const pdByProj    = d.pdProj >= T.PD_MIN_PROJ_PD && d.histAvgStartFinishDiff > 0;
-    const pdByHistory = d.histAvgStartFinishDiff >= 5 && d.startPos >= T.PD_MIN_START_POS;
+    const pdMinStart  = getPDMinStart(trackType);
+    const pdByHistory = d.histAvgStartFinishDiff >= 5 && d.startPos >= pdMinStart;
     if (pdByProj || pdByHistory) {
       d.group = "PD";
       continue;

@@ -149,6 +149,26 @@ function calcDomPointsAvailable(totalLaps, trackType) {
 }
 
 
+function getPDMinStart(trackType) {
+  const thresholds = {
+    "Superspeedway":            28,
+    "Superspeedway (Drafting)": 28,
+    "Intermediate":             20,
+    "Short Track (Flat)":       15,
+    "Short Track (Steep)":      15,
+    "Short Track (Fast)":       15,
+    "Short Track":              15,
+    "Short Track (Wear)":       15,
+    "Road Course":              18,
+    "Street Course":            18,
+    "Large Oval":               20,
+    "Large Triangle":           20,
+    "1-Mile Flat":              18
+  };
+  return thresholds[trackType] || 20;
+}
+
+
 /* -------------------------------------------------------
  *  6. Group Assignment Thresholds
  *
@@ -159,7 +179,7 @@ function calcDomPointsAvailable(totalLaps, trackType) {
 
 const GROUP_THRESHOLDS = {
   DOM_MAX_START_POS:  15,
-  PD_MIN_START_POS:   20,
+  // PD_MIN_START_POS removed — use getPDMinStart(trackType) instead
   PD_MIN_PROJ_PD:     8,
   LEVERAGE_MAX_OWN:   15,
   LEVERAGE_MIN_EDGE:  0,

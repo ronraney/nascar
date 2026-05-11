@@ -114,8 +114,7 @@ function logRaceOutcome() {
  * ------------------------------------------------------- */
 
 function prEnsureHeaders(raceEnv, headerRow) {
-  // Only write if col H (index 7) is empty
-  if (headerRow[PR_START_COL - 1]) return;
+  // Always write the full header set so new columns are picked up automatically
   raceEnv.getRange(1, PR_START_COL, 1, PR_HEADERS.length)
     .setValues([PR_HEADERS])
     .setFontWeight("bold");

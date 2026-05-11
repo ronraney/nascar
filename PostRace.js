@@ -225,11 +225,12 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
   }
 
   // ---- Top N Held ----
-  // Count how many of the top-N starters finished inside the top N
+  // Percentage of top-N starters who finished inside the top N
   function topNHeld(n) {
     const starters = finishDrivers.filter(d => d.start >= 1 && d.start <= n);
-    const held     = starters.filter(d => d.pos <= n).length;
-    return held + "/" + n;
+    if (starters.length === 0) return "—";
+    const held = starters.filter(d => d.pos <= n).length;
+    return Math.round((held / starters.length) * 100) + "%";
   }
 
   // ---- Laps Led Leader ----
@@ -253,7 +254,7 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
     if (result && dom.startPos > 0 && result.pos < dom.startPos) domHits++;
   }
   const domHitRate = domDrivers.length > 0
-    ? domHits + "/" + domDrivers.length
+    ? Math.round((domHits / domDrivers.length) * 100) + "%"
     : "—";
 
   // ---- Band Avg Finish ----

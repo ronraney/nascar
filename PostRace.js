@@ -23,14 +23,20 @@ const PR_SHEETS = {
   MODEL_CONFIG: "Model_Config"
 };
 
-// New column headers added to Race_Environment starting at col H (index 8)
+// Column headers added to Race_Environment starting at col H
 const PR_HEADERS = [
   "P1 Held", "P2 Held", "P3 Held",
   "Top 5 Held", "Top 10 Held", "Top 12 Held",
-  "Laps Led Leader", "Laps Led %", "DOM Hit Rate",
+  "Laps Led Driver", "Laps Led Pct",
+  "DOM Laps Led Count", "DOM Total Laps Led",
+  "PD Hit Rate", "PD Hits", "PD Total",
+  "Best PD Driver", "Best PD Gain", "Tagged PD Avg S/F",
+  "Big Movers 10+",
   "Band 1-5 Avg Finish", "Band 6-15 Avg Finish",
   "Band 16-30 Avg Finish", "Band 31+ Avg Finish",
-  "Top 8 Mfr", "Top 12 Mfr", "Notes"
+  "Top 8 Chevy", "Top 8 Ford", "Top 8 Toyota",
+  "Top 12 Chevy", "Top 12 Ford", "Top 12 Toyota",
+  "Notes"
 ];
 
 const PR_START_COL = 8; // cols A-G are pre-race; new cols start at H
@@ -79,27 +85,22 @@ function logRaceOutcome() {
     return;
   }
 
-  prEnsureHeaders(raceEnv, envData[0]);
+  prEnsureHeaders(raceEnv);
 
   const dashDrivers = prReadDashboard(ss);
-  const metrics     = prComputeMetrics(finishDrivers, dashDrivers, raceLaps);
+  const m           = prComputeMetrics(finishDrivers, dashDrivers, raceLaps);
 
   const values = [
-    metrics.p1Held,
-    metrics.p2Held,
-    metrics.p3Held,
-    metrics.top5Held,
-    metrics.top10Held,
-    metrics.top12Held,
-    metrics.lapsLedLeader,
-    metrics.lapsLedPct,
-    metrics.domHitRate,
-    metrics.band1to5Avg,
-    metrics.band6to15Avg,
-    metrics.band16to30Avg,
-    metrics.band31plusAvg,
-    metrics.top8Mfr,
-    metrics.top12Mfr,
+    m.p1Held, m.p2Held, m.p3Held,
+    m.top5Held, m.top10Held, m.top12Held,
+    m.lapsLedDriver, m.lapsLedPct,
+    m.domLapsLedCount, m.domTotalLapsLed,
+    m.pdHitRate, m.pdHits, m.pdTotal,
+    m.bestPdDriver, m.bestPdGain, m.taggedPdAvgSF,
+    m.bigMovers10Plus,
+    m.band1to5Avg, m.band6to15Avg, m.band16to30Avg, m.band31plusAvg,
+    m.top8Chevy, m.top8Ford, m.top8Toyota,
+    m.top12Chevy, m.top12Ford, m.top12Toyota,
     ""  // Notes — manually filled
   ];
 
@@ -111,10 +112,11 @@ function logRaceOutcome() {
 
 /* -------------------------------------------------------
  *  2. Ensure Post-Race Headers in Race_Environment Row 1
+ *
+ *  Always overwrites so schema changes are picked up immediately.
  * ------------------------------------------------------- */
 
-function prEnsureHeaders(raceEnv, headerRow) {
-  // Always write the full header set so new columns are picked up automatically
+function prEnsureHeaders(raceEnv) {
   raceEnv.getRange(1, PR_START_COL, 1, PR_HEADERS.length)
     .setValues([PR_HEADERS])
     .setFontWeight("bold");
@@ -206,67 +208,89 @@ function prReadDashboard(ss) {
  * ------------------------------------------------------- */
 
 function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
-  // Lookup maps
   const finishByKey = {};
   for (const d of finishDrivers) finishByKey[d.key] = d;
 
   const dashByKey = {};
   for (const d of dashDrivers) dashByKey[d.key] = d;
 
-  // Finish sorted ascending by position
   const sorted = finishDrivers.slice().sort((a, b) => a.pos - b.pos);
 
   // ---- P1/P2/P3 Held ----
-  // "Held" = pole/front-row starter finished at or better than their start
   function pHeld(startPos) {
     const starter = finishDrivers.find(d => d.start === startPos);
     if (!starter) return "N/A";
     return starter.pos <= startPos ? "Y" : "N";
   }
 
-  // ---- Top N Held ----
-  // Percentage of top-N starters who finished inside the top N
+  // ---- Top N Held (integer count) ----
   function topNHeld(n) {
     const starters = finishDrivers.filter(d => d.start >= 1 && d.start <= n);
-    if (starters.length === 0) return "—";
-    const held = starters.filter(d => d.pos <= n).length;
-    return Math.round((held / starters.length) * 100) + "%";
+    if (starters.length === 0) return "";
+    return starters.filter(d => d.pos <= n).length;
   }
 
-  // ---- Laps Led Leader ----
-  let lapsLedLeader = "—";
-  let lapsLedPct    = "—";
+  // ---- Laps Led Driver + Pct ----
+  let lapsLedDriver = "";
+  let lapsLedPct    = "";
   const withLaps = finishDrivers.filter(d => d.led > 0);
   if (withLaps.length > 0) {
     const leader = withLaps.reduce((best, d) => d.led > best.led ? d : best, withLaps[0]);
     const total  = raceLaps > 0
       ? raceLaps
       : finishDrivers.reduce((s, d) => s + d.led, 0);
-    lapsLedLeader = prShortName(leader.name);
-    lapsLedPct    = total > 0 ? Math.round((leader.led / total) * 100) + "%" : "—";
+    lapsLedDriver = prShortName(leader.name);
+    lapsLedPct    = total > 0 ? Math.round((leader.led / total) * 100) / 100 : "";
   }
 
-  // ---- DOM Hit Rate ----
-  // DOM drivers who led at least one lap
+  // ---- DOM: count who led + total laps led ----
   const domDrivers = dashDrivers.filter(d => d.group === "DOM");
-  let domHits = 0;
+  let domLapsLedCount  = 0;
+  let domTotalLapsLed  = 0;
   for (const dom of domDrivers) {
     const result = finishByKey[dom.key];
-    if (result && result.led > 0) domHits++;
+    if (!result) continue;
+    if (result.led > 0) domLapsLedCount++;
+    domTotalLapsLed += result.led;
   }
-  const domHitRate = domDrivers.length > 0
-    ? Math.round((domHits / domDrivers.length) * 100) + "%"
-    : "—";
+
+  // ---- PD metrics ----
+  // Hit = PD driver gained positions (finished better than they started)
+  const pdDrivers = dashDrivers.filter(d => d.group === "PD");
+  let pdHits       = 0;
+  let bestPdDriver = "";
+  let bestPdGain   = 0;
+  let pdSFSum      = 0;
+  let pdSFCount    = 0;
+
+  for (const pd of pdDrivers) {
+    const result = finishByKey[pd.key];
+    if (!result || pd.startPos <= 0) continue;
+    const gain = pd.startPos - result.pos; // positive = gained positions
+    pdSFSum += gain;
+    pdSFCount++;
+    if (gain > 0) pdHits++;
+    if (gain > bestPdGain) {
+      bestPdGain   = gain;
+      bestPdDriver = prShortName(pd.name);
+    }
+  }
+
+  const pdTotal      = pdDrivers.length;
+  const pdHitRate    = pdTotal > 0 ? Math.round((pdHits / pdTotal) * 100) / 100 : "";
+  const taggedPdAvgSF = pdSFCount > 0 ? Math.round((pdSFSum / pdSFCount) * 10) / 10 : "";
+
+  // ---- Big Movers 10+ ----
+  const bigMovers10Plus = finishDrivers.filter(d => d.start > 0 && (d.start - d.pos) >= 10).length;
 
   // ---- Band Avg Finish ----
   function bandAvg(minStart, maxStart) {
     const band = finishDrivers.filter(d => d.start >= minStart && d.start <= maxStart);
-    if (band.length === 0) return "—";
-    const avg = band.reduce((s, d) => s + d.pos, 0) / band.length;
-    return Math.round(avg * 10) / 10;
+    if (band.length === 0) return "";
+    return Math.round(band.reduce((s, d) => s + d.pos, 0) / band.length * 10) / 10;
   }
 
-  // ---- Manufacturer Breakdown ----
+  // ---- Manufacturer counts by finish group ----
   function parseMfr(notes) {
     const m = notes.match(/MFR:([^\s|]+)/i);
     if (!m) return null;
@@ -274,40 +298,51 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
     if (raw.indexOf("chevy") >= 0 || raw.indexOf("chevrolet") >= 0) return "Chevy";
     if (raw.indexOf("ford") >= 0)                                    return "Ford";
     if (raw.indexOf("toyota") >= 0)                                  return "Toyota";
-    return m[1]; // pass through unknown makes as-is
+    return null;
   }
 
-  function topNMfr(n) {
-    const counts = {};
+  function mfrCounts(n) {
+    const counts = { Chevy: 0, Ford: 0, Toyota: 0 };
     for (const d of sorted.slice(0, n)) {
       const dash = dashByKey[d.key];
       if (!dash) continue;
       const mfr = parseMfr(dash.notes);
-      if (!mfr) continue;
-      counts[mfr] = (counts[mfr] || 0) + 1;
+      if (mfr && mfr in counts) counts[mfr]++;
     }
-    const parts = Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .map(([mfr, cnt]) => mfr + " " + cnt);
-    return parts.length > 0 ? parts.join(" / ") : "—";
+    return counts;
   }
 
+  const mfr8  = mfrCounts(8);
+  const mfr12 = mfrCounts(12);
+
   return {
-    p1Held:        pHeld(1),
-    p2Held:        pHeld(2),
-    p3Held:        pHeld(3),
-    top5Held:      topNHeld(5),
-    top10Held:     topNHeld(10),
-    top12Held:     topNHeld(12),
-    lapsLedLeader: lapsLedLeader,
-    lapsLedPct:    lapsLedPct,
-    domHitRate:    domHitRate,
-    band1to5Avg:   bandAvg(1, 5),
-    band6to15Avg:  bandAvg(6, 15),
-    band16to30Avg: bandAvg(16, 30),
-    band31plusAvg: bandAvg(31, 99),
-    top8Mfr:       topNMfr(8),
-    top12Mfr:      topNMfr(12)
+    p1Held:           pHeld(1),
+    p2Held:           pHeld(2),
+    p3Held:           pHeld(3),
+    top5Held:         topNHeld(5),
+    top10Held:        topNHeld(10),
+    top12Held:        topNHeld(12),
+    lapsLedDriver:    lapsLedDriver,
+    lapsLedPct:       lapsLedPct,
+    domLapsLedCount:  domLapsLedCount,
+    domTotalLapsLed:  domTotalLapsLed,
+    pdHitRate:        pdHitRate,
+    pdHits:           pdHits,
+    pdTotal:          pdTotal,
+    bestPdDriver:     bestPdDriver,
+    bestPdGain:       bestPdGain > 0 ? bestPdGain : "",
+    taggedPdAvgSF:    taggedPdAvgSF,
+    bigMovers10Plus:  bigMovers10Plus,
+    band1to5Avg:      bandAvg(1, 5),
+    band6to15Avg:     bandAvg(6, 15),
+    band16to30Avg:    bandAvg(16, 30),
+    band31plusAvg:    bandAvg(31, 99),
+    top8Chevy:        mfr8.Chevy,
+    top8Ford:         mfr8.Ford,
+    top8Toyota:       mfr8.Toyota,
+    top12Chevy:       mfr12.Chevy,
+    top12Ford:        mfr12.Ford,
+    top12Toyota:      mfr12.Toyota
   };
 }
 
@@ -315,9 +350,9 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
 /* -------------------------------------------------------
  *  6. Utility: Short Driver Name
  *
- *  "Kyle Larson" → "Larson"
+ *  "Kyle Larson"      → "Larson"
  *  "Martin Truex Jr." → "Truex Jr."
- *  "SVG" → "SVG" (already abbreviated)
+ *  "SVG"              → "SVG"
  * ------------------------------------------------------- */
 
 function prShortName(fullName) {

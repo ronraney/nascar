@@ -247,12 +247,12 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
   }
 
   // ---- DOM Hit Rate ----
-  // DOM drivers who finished better (lower pos) than their start position
+  // DOM drivers who led at least one lap
   const domDrivers = dashDrivers.filter(d => d.group === "DOM");
   let domHits = 0;
   for (const dom of domDrivers) {
     const result = finishByKey[dom.key];
-    if (result && dom.startPos > 0 && result.pos < dom.startPos) domHits++;
+    if (result && result.led > 0) domHits++;
   }
   const domHitRate = domDrivers.length > 0
     ? Math.round((domHits / domDrivers.length) * 100) + "%"

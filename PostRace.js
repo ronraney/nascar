@@ -27,7 +27,7 @@ const PR_SHEETS = {
 const PR_HEADERS = [
   "P1 Held", "P2 Held", "P3 Held",
   "Top 5 Held", "Top 10 Held", "Top 12 Held",
-  "Laps Led Leader", "DOM Hit Rate",
+  "Laps Led Leader", "Laps Led %", "DOM Hit Rate",
   "Band 1-5 Avg Finish", "Band 6-15 Avg Finish",
   "Band 16-30 Avg Finish", "Band 31+ Avg Finish",
   "Top 8 Mfr", "Top 12 Mfr", "Notes"
@@ -92,6 +92,7 @@ function logRaceOutcome() {
     metrics.top10Held,
     metrics.top12Held,
     metrics.lapsLedLeader,
+    metrics.lapsLedPct,
     metrics.domHitRate,
     metrics.band1to5Avg,
     metrics.band6to15Avg,
@@ -235,14 +236,15 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
 
   // ---- Laps Led Leader ----
   let lapsLedLeader = "—";
+  let lapsLedPct    = "—";
   const withLaps = finishDrivers.filter(d => d.led > 0);
   if (withLaps.length > 0) {
     const leader = withLaps.reduce((best, d) => d.led > best.led ? d : best, withLaps[0]);
     const total  = raceLaps > 0
       ? raceLaps
       : finishDrivers.reduce((s, d) => s + d.led, 0);
-    const pct = total > 0 ? Math.round((leader.led / total) * 100) : 0;
-    lapsLedLeader = prShortName(leader.name) + " - " + pct + "%";
+    lapsLedLeader = prShortName(leader.name);
+    lapsLedPct    = total > 0 ? Math.round((leader.led / total) * 100) + "%" : "—";
   }
 
   // ---- DOM Hit Rate ----
@@ -299,6 +301,7 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
     top10Held:     topNHeld(10),
     top12Held:     topNHeld(12),
     lapsLedLeader: lapsLedLeader,
+    lapsLedPct:    lapsLedPct,
     domHitRate:    domHitRate,
     band1to5Avg:   bandAvg(1, 5),
     band6to15Avg:  bandAvg(6, 15),

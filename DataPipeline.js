@@ -16,6 +16,7 @@
  *    - qualifying_1     (qualifying speed + manufacturer)
  *    - Data_Green_Speed (green flag speed — historical race pace at track)
  *    - Data_Total_Speed (segment speed ranks — consistency signal)
+ *    - TrackType        (manual paste: avg finish/start/laps led/rating at track type)
  *
  *  Depends on: Config.gs (cleanName, getRecencyWeight, DK constants)
  * ============================================================
@@ -60,8 +61,9 @@ function loadAllData() {
   const ratingsMap    = loadRatings(ss, nameMap);
   const practiceMap   = loadPractice(ss, nameMap);
   const qualifyingMap = loadQualifying(ss, nameMap);
-  const greenSpeedMap = loadGreenSpeed(ss, nameMap);
-  const totalSpeedMap = loadTotalSpeed(ss, nameMap);
+  const greenSpeedMap  = loadGreenSpeed(ss, nameMap);
+  const totalSpeedMap  = loadTotalSpeed(ss, nameMap);
+  const trackTypeMap   = loadTrackType(ss, nameMap);
 
   // ---- Merge everything into unified driver objects ----
   const drivers = [];
@@ -78,6 +80,7 @@ function loadAllData() {
     const qual = qualifyingMap[key] || {};
     const gSpd = greenSpeedMap[key] || {};
     const tSpd = totalSpeedMap[key] || {};
+    const tt   = trackTypeMap[key]  || {};
 
     // --- iFantasyRace projection range ---
     // ifrProjMid is the anchor projection (replaces SaberSim SS Proj)
@@ -171,8 +174,15 @@ function loadAllData() {
       maxExp:         0,
       cashScore:      0,
       trackHistScore: 0,
+      ttHistScore:    0,
       cashCoreGrade:  0,
-      notes:          []
+      notes:          [],
+
+      // --- TrackType signals (confidence-discounted, blended in Analysis) ---
+      ttLapsLedPerRace: tt.ttLapsLedPerRace || 0,
+      ttSFDiff:         tt.ttSFDiff         || 0,
+      ttRating:         tt.ttRating         || 0,
+      ttRaces:          tt.ttRaces          || 0
     });
   }
 
@@ -648,24 +658,37 @@ function loadAvgStart(ss, nameMap) {
   if (data.length < 2) return {};
 
   const h  = data[0].map(v => v ? v.toString().trim().replace(/\s+/g, " ") : "");
-  const hl = h.map(v => v.toLowerCase());
+  // Strip periods so "Avg. Finish" → "avg finish", "Avg. Start" → "avg start"
+  const hl = h.map(v => v.toLowerCase().replace(/\./g, " ").replace(/\s+/g, " ").trim());
 
-  function findCol(target) {
-    return hl.findIndex(col => col.includes(target));
+  // Try each target in order; return first column index found
+  function findCol(...targets) {
+    for (const target of targets) {
+      const i = hl.findIndex(col => col.includes(target));
+      if (i >= 0) return i;
+    }
+    return -1;
   }
 
   const idx = {
     driver:    findCol("driver"),
-    avgFinish: findCol("avg fin"),      // matches "Avg Fin", "Avg Finish", "Avg\nFinish"
+    avgFinish: findCol("avg fin", "avg f"),   // "Avg Finish", "Avg Fin", "Avg F"
     races:     findCol("races"),
     lapsLed:   findCol("laps led"),
-    avgStart:  findCol("avg start"),
+    avgStart:  findCol("avg start", "avg s"), // "Avg Start", "Avg S"
     avgRating: findCol("rating")
   };
 
   if (idx.driver < 0) {
     Logger.log("ERROR: Data_Avg_Start missing Driver column. Headers: " + h.join(", "));
     return {};
+  }
+
+  if (idx.avgFinish < 0) {
+    Logger.log("WARNING: Data_Avg_Start — no Avg Finish column found. Headers: " + h.join(", ") + ". Avg S/F Diff will be 0.");
+  }
+  if (idx.avgStart < 0) {
+    Logger.log("WARNING: Data_Avg_Start — no Avg Start column found. Headers: " + h.join(", "));
   }
 
   const map = {};
@@ -1021,4 +1044,89 @@ function computeSpeedComposite(drivers) {
   }
 
   for (const d of drivers) delete d._speedRawScore;
+}
+
+
+/* -------------------------------------------------------
+ *  16. TrackType Data Loader
+ *
+ *  Manual paste each week. Columns (order flexible):
+ *    Driver | Avg Fin | Races | Laps Led | Avg St | Rating
+ *
+ *  Computed per driver:
+ *    ttLapsLedPerRace = Laps Led / Races
+ *    ttSFDiff         = Avg St − Avg Fin
+ *    ttRating         = Rating
+ *
+ *  All three are confidence-discounted by ttRaces:
+ *    >= 10 → 1.00   5-9 → 0.85   3-4 → 0.70   < 3 → 0.50
+ *
+ *  Returns a map: canonicalKey → {
+ *    ttLapsLedPerRace, ttSFDiff, ttRating, ttRaces
+ *  }
+ * ------------------------------------------------------- */
+
+function loadTrackType(ss, nameMap) {
+  const sheet = ss.getSheetByName("TrackType");
+  if (!sheet) { Logger.log("NOTE: TrackType sheet not found — tt signals will be zero."); return {}; }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return {};
+
+  const h  = data[0].map(v => v ? v.toString().trim() : "");
+  const hl = h.map(v => v.toLowerCase().replace(/\./g, "").replace(/\s+/g, " ").trim());
+
+  function findCol(...targets) {
+    for (const t of targets) {
+      const i = hl.findIndex(col => col.includes(t));
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+
+  const idx = {
+    driver:  findCol("driver"),
+    avgFin:  findCol("avg fin", "avg f"),
+    races:   findCol("races"),
+    lapsLed: findCol("laps led"),
+    avgSt:   findCol("avg st", "avg s"),
+    rating:  findCol("rating")
+  };
+
+  if (idx.driver < 0) {
+    Logger.log("ERROR: TrackType missing Driver column. Headers: " + h.join(", "));
+    return {};
+  }
+
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const key = resolveKey(row[idx.driver], nameMap);
+    if (!key) continue;
+
+    const avgFin  = idx.avgFin  >= 0 ? (parseFloat(row[idx.avgFin])  || 0) : 0;
+    const races   = idx.races   >= 0 ? (parseFloat(row[idx.races])   || 0) : 0;
+    const lapsLed = idx.lapsLed >= 0 ? (parseFloat(row[idx.lapsLed]) || 0) : 0;
+    const avgSt   = idx.avgSt   >= 0 ? (parseFloat(row[idx.avgSt])   || 0) : 0;
+    const rating  = idx.rating  >= 0 ? (parseFloat(row[idx.rating])  || 0) : 0;
+
+    const rawLapsLedPerRace = races > 0 ? lapsLed / races : 0;
+    const rawSFDiff         = (avgSt > 0 && avgFin > 0) ? avgSt - avgFin : 0;
+
+    let factor;
+    if      (races >= 10) factor = 1.00;
+    else if (races >= 5)  factor = 0.85;
+    else if (races >= 3)  factor = 0.70;
+    else                  factor = 0.50;
+
+    map[key] = {
+      ttLapsLedPerRace: rawLapsLedPerRace * factor,
+      ttSFDiff:         rawSFDiff         * factor,
+      ttRating:         rating             * factor,
+      ttRaces:          races
+    };
+  }
+
+  Logger.log("TrackType loaded: " + Object.keys(map).length + " drivers.");
+  return map;
 }

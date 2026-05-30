@@ -121,6 +121,7 @@ function renderGPPTable(drivers, rc) {
     round2(d.cashScore),
     round2(d.trackHistScore),
     round2(d.histAvgStartFinishDiff),
+    round2(d.ttHistScore),
     d.notes.join(" | ")
   ]);
 

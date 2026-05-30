@@ -18,8 +18,14 @@ function runAnalysis(data) {
   const trackType = raceContext.trackType;
 
   computeDomPoints(drivers, raceContext);
+  applyTTDomBlend(drivers);
+
   computePDProjection(drivers);
+  applyTTPDBlend(drivers);
+
   computeAdjProjection(drivers, raceContext);
+  applyTTAdjBlend(drivers);
+
   computeEdge(drivers);
 
   for (const d of drivers) {
@@ -39,6 +45,7 @@ function runAnalysis(data) {
 
   // ---- Step 9: Track History Score ----
   computeTrackHistScore(drivers);
+  computeTTHistScore(drivers);
 
   // ---- Step 10: Cash Core Grade + Group Assignment ----
   // Must run after track history score and cash score are computed.
@@ -207,6 +214,77 @@ function clampAdj(val, maxAbs) {
 
 
 /* -------------------------------------------------------
+ *  4b. TrackType Blend
+ *
+ *  Blends domPts, pdProj, and adjProj with TrackType-derived
+ *  signals after each site-specific computation.
+ *
+ *  Blend ratio by siteRaces:
+ *    10+  → 75% site / 25% TrackType
+ *    5-9  → 60% site / 40% TrackType
+ *    3-4  → 50% site / 50% TrackType
+ *    1-2  → 35% site / 65% TrackType
+ *    0    →  0% site / 100% TrackType
+ *
+ *  If the TrackType sheet was not filled in (all tt fields = 0),
+ *  each blend function exits early and leaves values unchanged.
+ * ------------------------------------------------------- */
+
+function getTrackTypeBlendWeights(siteRaces) {
+  if (siteRaces >= 10) return { siteW: 0.75, ttW: 0.25 };
+  if (siteRaces >= 5)  return { siteW: 0.60, ttW: 0.40 };
+  if (siteRaces >= 3)  return { siteW: 0.50, ttW: 0.50 };
+  if (siteRaces >= 1)  return { siteW: 0.35, ttW: 0.65 };
+  return                      { siteW: 0.00, ttW: 1.00 };
+}
+
+function applyTTDomBlend(drivers) {
+  const ttArr = drivers.map(d => d.ttLapsLedPerRace);
+  if (ttArr.every(v => v === 0)) return;
+
+  for (const d of drivers) {
+    const { siteW, ttW } = getTrackTypeBlendWeights(d.siteRaces);
+    const ttNorm = normalize(d.ttLapsLedPerRace, ttArr);
+    d.domPts = Math.round((siteW * d.domPts + ttW * ttNorm) * 100) / 100;
+  }
+
+  // Re-rank after blend
+  const sorted = drivers.slice().sort((a, b) => b.domPts - a.domPts);
+  for (let i = 0; i < sorted.length; i++) sorted[i].domRank = i + 1;
+}
+
+function applyTTPDBlend(drivers) {
+  if (drivers.every(d => d.ttSFDiff === 0)) return;
+
+  for (const d of drivers) {
+    const { siteW, ttW } = getTrackTypeBlendWeights(d.siteRaces);
+    d.pdProj = Math.round((siteW * d.pdProj + ttW * d.ttSFDiff) * 100) / 100;
+  }
+}
+
+function applyTTAdjBlend(drivers) {
+  const ttArr = drivers.map(d => d.ttRating);
+  if (ttArr.every(v => v === 0)) return;
+
+  for (const d of drivers) {
+    const { siteW, ttW } = getTrackTypeBlendWeights(d.siteRaces);
+    const ttRatingNorm = normalize(d.ttRating, ttArr);
+    const ttBonus      = clampAdj(((ttRatingNorm - 50) / 50) * ADJ_PROJ_BOUNDS.MAX_HISTORY_ADJ,
+                                   ADJ_PROJ_BOUNDS.MAX_HISTORY_ADJ);
+    const ttAdjProj    = d.proj + ttBonus;
+    d.adjProj = siteW * d.adjProj + ttW * ttAdjProj;
+
+    // Preserve floor clamp from computeAdjProjection
+    const floorClamp = d.floor > 0
+      ? Math.min(d.floor, d.proj * 0.80)
+      : d.proj * 0.80;
+    d.adjProj = Math.max(d.adjProj, floorClamp);
+    d.adjProj = Math.round(d.adjProj * 100) / 100;
+  }
+}
+
+
+/* -------------------------------------------------------
  *  5. Edge Calculation
  *
  *  Sets edge = 0 for all when no ownership data entered.
@@ -369,6 +447,48 @@ function computeTrackHistScore(drivers) {
               + (top15Norm  * 0.25);
 
     d.trackHistScore = Math.round(raw * histPenalty * 10) / 10;
+  }
+}
+
+
+/* -------------------------------------------------------
+ *  TrackType History Score
+ *
+ *  Composite of TrackType signals, normalized 0-100.
+ *  Uses the confidence-discounted tt fields stored on each driver.
+ *
+ *  Components:
+ *    ttRating         — higher = better (weighted 50%)
+ *    ttLapsLedPerRace — higher = better (weighted 30%)
+ *    ttSFDiff         — higher = better (weighted 20%)
+ *
+ *  Then multiplied by the same confidence factor as Step 1:
+ *    ttRaces >= 10 → 1.00   5-9 → 0.85   3-4 → 0.70
+ *    ttRaces 1-2  → 0.50   ttRaces 0 → 0.00
+ * ------------------------------------------------------- */
+
+function computeTTHistScore(drivers) {
+  const ratingArr = drivers.map(d => d.ttRating);
+  const lapsArr   = drivers.map(d => d.ttLapsLedPerRace);
+  const sfArr     = drivers.map(d => d.ttSFDiff);
+
+  for (const d of drivers) {
+    const ratingNorm = normalize(d.ttRating,         ratingArr);
+    const lapsNorm   = normalize(d.ttLapsLedPerRace, lapsArr);
+    const sfNorm     = normalize(d.ttSFDiff,         sfArr);
+
+    const raw = (ratingNorm * 0.50)
+              + (lapsNorm   * 0.30)
+              + (sfNorm     * 0.20);
+
+    let factor;
+    if      (d.ttRaces >= 10) factor = 1.00;
+    else if (d.ttRaces >= 5)  factor = 0.85;
+    else if (d.ttRaces >= 3)  factor = 0.70;
+    else if (d.ttRaces >= 1)  factor = 0.50;
+    else                      factor = 0.00;
+
+    d.ttHistScore = Math.round(raw * factor * 10) / 10;
   }
 }
 

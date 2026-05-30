@@ -81,6 +81,7 @@
       .btn-optimize { background: #ff6b6b; color: white; }
       .btn-report   { background: #f1f3f4; color: #546e7a; font-size: 11px; padding: 8px; }
       .btn-setup    { background: #e0e0e0; color: #555; font-size: 11px; padding: 8px; }
+      .btn-postrace { background: #34a853; color: white; }
 
       .status {
         font-size: 10px; padding: 4px 8px; border-radius: 3px;
@@ -156,6 +157,9 @@
       <div class="card-title">Group Summary</div>
       <div id="groupList"></div>
     </div>
+
+    <!-- Post-Race -->
+    <button class="btn btn-postrace" onclick="doLogRaceOutcome()">🏁  Log Race Outcome</button>
 
     <!-- Utility Buttons -->
     <button class="btn btn-report" onclick="doRefreshReport()">🔄  Refresh Exposure Report</button>
@@ -258,6 +262,17 @@
           })
           .withFailureHandler(function(e) { setStatus("Error: " + e.message, "err"); })
           .refreshExposureReport();
+      }
+
+      // ── Log Race Outcome ─────────────────────────────
+      function doLogRaceOutcome() {
+        setStatus("Logging race outcome...", "info");
+        google.script.run
+          .withSuccessHandler(function() {
+            setStatus("Race outcome logged.", "ok");
+          })
+          .withFailureHandler(function(e) { setStatus("Error: " + e.message, "err"); })
+          .logRaceOutcome();
       }
 
       // ── Setup ────────────────────────────────────────

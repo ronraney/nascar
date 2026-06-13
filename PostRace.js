@@ -244,7 +244,7 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
   }
 
   // ---- DOM: count who led + total laps led ----
-  const domDrivers = dashDrivers.filter(d => d.group === "DOM");
+  const domDrivers = dashDrivers.filter(d => d.group.includes("DOM"));
   let domLapsLedCount  = 0;
   let domTotalLapsLed  = 0;
   for (const dom of domDrivers) {
@@ -256,7 +256,7 @@ function prComputeMetrics(finishDrivers, dashDrivers, raceLaps) {
 
   // ---- PD metrics ----
   // Hit = PD driver gained positions (finished better than they started)
-  const pdDrivers = dashDrivers.filter(d => d.group === "PD");
+  const pdDrivers = dashDrivers.filter(d => d.group.includes("PD"));
   let pdHits       = 0;
   let bestPdDriver = "";
   let bestPdGain   = 0;

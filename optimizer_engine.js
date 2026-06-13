@@ -81,8 +81,8 @@ function getPoolCap(d, poolCaps, totalLineups, globalMax) {
   };
 
   let poolKey;
-  if (d.group === "DOM")     poolKey = "DOM";
-  else if (d.group === "PD") poolKey = "PD";
+  if (d.group.includes("DOM"))     poolKey = "DOM";
+  else if (d.group.includes("PD")) poolKey = "PD";
   // PUNT: ungrouped value plays in realistic punt range ($6,000-$8,500)
   // Below $6,000 = backmarker territory → FILL cap regardless of salary
   else if (!d.group && d.salary >= 6000 && d.salary <= 8500) poolKey = "PUNT";
@@ -139,8 +139,8 @@ function buildLineup(drivers, settings, exposureCounts, totalLineups, loosenFact
     if (totalLineups <= 1) return false;
     // LoosenFactor only relaxes DOM and PD caps when the optimizer is struggling.
     // PUNT and FILL caps are hard — backmarkers should never slip in via loosening.
-    const poolKey = d.group === "DOM" ? "DOM" :
-                    d.group === "PD"  ? "PD"  : "FIXED";
+    const poolKey = d.group.includes("DOM") ? "DOM" :
+                    d.group.includes("PD")  ? "PD"  : "FIXED";
     const appliedLF = (poolKey === "FIXED") ? 1.0 : lf;
     const cap = getPoolCap(d, poolCaps, totalLineups, globalMax) * appliedLF;
     return (exposureCounts[d.name] || 0) >= Math.ceil(cap);
@@ -365,8 +365,8 @@ function writeOptimizerLineups(ss, lineups, raceContext) {
     const sorted = lineups[i].slice().sort((a, b) => b.salary - a.salary);
     for (let j = 0; j < sorted.length; j++) {
       const cell = sheet.getRange(nextRow + i, j + 1);
-      if (sorted[j].group === "DOM")     cell.setBackground("#ffe0e0").setFontWeight("bold");
-      else if (sorted[j].group === "PD") cell.setBackground("#e0f7f7").setFontWeight("bold");
+      if (sorted[j].group.includes("DOM"))     cell.setBackground("#ffe0e0").setFontWeight("bold");
+      else if (sorted[j].group.includes("PD")) cell.setBackground("#e0f7f7").setFontWeight("bold");
     }
   }
 

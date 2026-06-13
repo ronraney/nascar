@@ -169,6 +169,24 @@ function getPDMinStart(trackType) {
 }
 
 
+function getDOMMaxStart(trackType) {
+  const thresholds = {
+    "Superspeedway":            0,
+    "Superspeedway (Drafting)": 0,
+    "Intermediate":             15,
+    "Short Track (Flat)":       15,
+    "Short Track (Steep)":      15,
+    "Short Track (Fast)":       15,
+    "Short Track":              15,
+    "Short Track (Wear)":       15,
+    "Road Course":              10,
+    "Street Course":            0,
+    "Large Oval":               15
+  };
+  return thresholds[trackType] ?? 15;
+}
+
+
 /* -------------------------------------------------------
  *  6. Group Assignment Thresholds
  *
@@ -178,7 +196,7 @@ function getPDMinStart(trackType) {
  * ------------------------------------------------------- */
 
 const GROUP_THRESHOLDS = {
-  DOM_MAX_START_POS:  15,
+  // DOM_MAX_START_POS removed — use getDOMMaxStart(trackType) instead
   // PD_MIN_START_POS removed — use getPDMinStart(trackType) instead
   PD_MIN_PROJ_PD:     8,
   LEVERAGE_MAX_OWN:   15,
@@ -222,7 +240,8 @@ const CASH_WEIGHTS = {
   pdW:        0.10,
   stdPenalty: 0.15,
   chalkW:     0.10,
-  valueW:     0.15
+  valueW:     0.15,
+  formW:      0.15
 };
 
 const CASH_ROSTER_SIZE = 6;
@@ -298,11 +317,11 @@ const DASH_COLS = {
   GPP_HEADERS: [
     "✓",
     "Driver", "Sal", "Start", "Own%", "Group",
-    "Proj", "Adj Proj", "Floor", "Ceil", "Std",
+    "iFR Proj", "Proj Pts", "Floor", "Ceil", "Std",
     "Dom Pts", "Dom Rank", "PD Proj",
     "Edge", "Value",
     "Cash Score", "Track Hist",
-    "Avg S/F Diff", "TT Hist", "Notes"
+    "Avg S/F Diff", "SP Std", "TT Hist", "Form", "Notes"
   ],
 
   COL_CHECK:       1,
@@ -324,9 +343,11 @@ const DASH_COLS = {
   COL_CASHSCORE:   17,
   COL_TRACKHIST:   18,
   COL_AVGDIFF:     19,
-  COL_TTHISTSCORE: 20,
-  COL_NOTES:       21,
-  TOTAL_COLS:      21,
+  COL_SPSTD:       20,
+  COL_TTHISTSCORE: 21,
+  COL_FORM:        22,
+  COL_NOTES:       23,
+  TOTAL_COLS:      23,
 
   CASH_HEADER_ROW: 5,
   CASH_DATA_START: 6,
@@ -344,5 +365,6 @@ const ADJ_PROJ_BOUNDS = {
   MAX_DOM_ADJ:     8,
   MAX_PD_ADJ:      6,
   MAX_SPEED_ADJ:   5,
-  MAX_HISTORY_ADJ: 5
+  MAX_HISTORY_ADJ: 5,
+  MAX_FORM_ADJ:    4
 };

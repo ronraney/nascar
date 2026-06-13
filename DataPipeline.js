@@ -64,6 +64,7 @@ function loadAllData() {
   const greenSpeedMap  = loadGreenSpeed(ss, nameMap);
   const totalSpeedMap  = loadTotalSpeed(ss, nameMap);
   const trackTypeMap   = loadTrackType(ss, nameMap);
+  const standingsMap   = loadStandings(ss, nameMap);
 
   // ---- Merge everything into unified driver objects ----
   const drivers = [];
@@ -81,6 +82,7 @@ function loadAllData() {
     const gSpd = greenSpeedMap[key] || {};
     const tSpd = totalSpeedMap[key] || {};
     const tt   = trackTypeMap[key]  || {};
+    const stnd = standingsMap[key]  || {};
 
     // --- iFantasyRace projection range ---
     // ifrProjMid is the anchor projection (replaces SaberSim SS Proj)
@@ -182,7 +184,18 @@ function loadAllData() {
       ttLapsLedPerRace: tt.ttLapsLedPerRace || 0,
       ttSFDiff:         tt.ttSFDiff         || 0,
       ttRating:         tt.ttRating         || 0,
-      ttRaces:          tt.ttRaces          || 0
+      ttRaces:          tt.ttRaces          || 0,
+
+      // --- Current season standings (recent form signals) ---
+      recentRaces:      stnd.races      || 0,
+      recentWins:       stnd.wins       || 0,
+      recentTop5:       stnd.top5       || 0,
+      recentTop10:      stnd.top10      || 0,
+      recentLapsLed:    stnd.lapsLed    || 0,
+      recentLLF:        stnd.llf        || 0,
+      recentAvgStart:   stnd.avgStart   || 0,
+      recentAvgFinish:  stnd.avgFinish  || 0,
+      recentFormScore:  0                     // computed in Analysis
     });
   }
 
@@ -1128,5 +1141,88 @@ function loadTrackType(ss, nameMap) {
   }
 
   Logger.log("TrackType loaded: " + Object.keys(map).length + " drivers.");
+  return map;
+}
+
+
+/* -------------------------------------------------------
+ *  16. Standings Loader (Current Season Form)
+ *
+ *  Reads current season standings pasted into Data_Standings.
+ *  Provides recent-form signals: win rate, top-5/10 rate,
+ *  laps led, avg start/finish, and laps-led frequency (LLF).
+ *
+ *  Sheet columns (NASCAR standings export):
+ *    [pos], Driver, Races, Win, T5, T10, Pole, Laps, Led,
+ *    Earnings, AvSt, AvFn, Raf, Miles, LLF, Points, Diff
+ *
+ *  Returns a map: canonicalKey → {
+ *    races, wins, top5, top10, lapsLed, avgStart, avgFinish, llf
+ *  }
+ * ------------------------------------------------------- */
+
+function loadStandings(ss, nameMap) {
+  const sheet = ss.getSheetByName("Data_Standings");
+  if (!sheet) {
+    Logger.log("NOTE: Data_Standings not found — recent form signals will be neutral.");
+    return {};
+  }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return {};
+
+  const h  = data[0].map(v => v ? v.toString().trim() : "");
+  const hl = h.map(v => v.toLowerCase());
+
+  function findCol(...targets) {
+    for (const t of targets) {
+      const i = hl.findIndex(col => col === t);
+      if (i >= 0) return i;
+    }
+    return -1;
+  }
+
+  const idx = {
+    driver:    findCol("driver"),
+    races:     findCol("races"),
+    wins:      findCol("win"),
+    top5:      findCol("t5"),
+    top10:     findCol("t10"),
+    led:       findCol("led"),
+    avgStart:  findCol("avst"),
+    avgFinish: findCol("avfn"),
+    llf:       findCol("llf")
+  };
+
+  if (idx.driver < 0) {
+    Logger.log("ERROR: Data_Standings missing Driver column. Headers: " + h.join(", "));
+    return {};
+  }
+
+  const map = {};
+  for (let i = 1; i < data.length; i++) {
+    const row     = data[i];
+    const rawName = row[idx.driver] ? row[idx.driver].toString().trim() : "";
+    if (!rawName) continue;
+
+    const key   = resolveKey(rawName, nameMap);
+    if (!key) continue;
+
+    const races = idx.races >= 0 ? (parseFloat(row[idx.races]) || 0) : 0;
+    if (races === 0) continue;
+
+    map[key] = {
+      races:     races,
+      wins:      idx.wins      >= 0 ? (parseFloat(row[idx.wins])      || 0) : 0,
+      top5:      idx.top5      >= 0 ? (parseFloat(row[idx.top5])      || 0) : 0,
+      top10:     idx.top10     >= 0 ? (parseFloat(row[idx.top10])     || 0) : 0,
+      lapsLed:   idx.led       >= 0 ? (parseFloat(row[idx.led])       || 0) : 0,
+      avgStart:  idx.avgStart  >= 0 ? (parseFloat(row[idx.avgStart])  || 0) : 0,
+      avgFinish: idx.avgFinish >= 0 ? (parseFloat(row[idx.avgFinish]) || 0) : 0,
+      llf:       idx.llf       >= 0 ? (parseFloat(row[idx.llf])       || 0) : 0
+    };
+  }
+
+  Logger.log("Data_Standings loaded: " + Object.keys(map).length + " drivers.");
   return map;
 }

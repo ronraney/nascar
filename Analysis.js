@@ -17,6 +17,8 @@ function runAnalysis(data) {
   const { drivers, raceContext } = data;
   const trackType = raceContext.trackType;
 
+  computeRecentForm(drivers);
+
   computeDomPoints(drivers, raceContext);
   applyTTDomBlend(drivers);
 
@@ -57,37 +59,98 @@ function runAnalysis(data) {
 
 
 /* -------------------------------------------------------
+ *  1b. Recent Form Score (Current Season Standings)
+ *
+ *  Composite of five signals, all normalized 0-100:
+ *    Win rate      (0.30)
+ *    Top-5 rate    (0.25)
+ *    Top-10 rate   (0.15)
+ *    Laps led/race (0.20)
+ *    Avg finish    (0.10, inverted — lower finish pos = better)
+ *
+ *  Result stored as recentFormScore (0-100, higher = better form).
+ *  Drivers with no standings data receive the field median.
+ * ------------------------------------------------------- */
+
+function computeRecentForm(drivers) {
+  const withData = drivers.filter(d => d.recentRaces > 0);
+  if (withData.length === 0) return;
+
+  const winPctArr   = withData.map(d => d.recentWins    / d.recentRaces);
+  const top5PctArr  = withData.map(d => d.recentTop5    / d.recentRaces);
+  const top10PctArr = withData.map(d => d.recentTop10   / d.recentRaces);
+  const lledRaceArr = withData.map(d => d.recentLapsLed / d.recentRaces);
+  const finInvArr   = withData.map(d => -d.recentAvgFinish);
+
+  for (const d of withData) {
+    const winNorm   = normalize(d.recentWins    / d.recentRaces, winPctArr);
+    const top5Norm  = normalize(d.recentTop5    / d.recentRaces, top5PctArr);
+    const top10Norm = normalize(d.recentTop10   / d.recentRaces, top10PctArr);
+    const lledNorm  = normalize(d.recentLapsLed / d.recentRaces, lledRaceArr);
+    const finNorm   = normalize(-d.recentAvgFinish,              finInvArr);
+
+    d.recentFormScore = Math.round(
+      (winNorm   * 0.30)
+    + (top5Norm  * 0.25)
+    + (top10Norm * 0.15)
+    + (lledNorm  * 0.20)
+    + (finNorm   * 0.10)
+    );
+  }
+
+  const scores      = withData.map(d => d.recentFormScore);
+  const medianScore = Math.round(percentile(scores, 50));
+  for (const d of drivers) {
+    if (d.recentRaces === 0) d.recentFormScore = medianScore;
+  }
+}
+
+
+/* -------------------------------------------------------
  *  2. Dominator Points Calculation
  *
  *  Six normalized signals weighted and combined.
  *  Reliability-adjusted by site race count.
- *  domScore/domLabel from Playability are NOT used here.
+ *  Speed signal priority: qualSpeed → pracBestTime → 50 (neutral).
  * ------------------------------------------------------- */
 
 function computeDomPoints(drivers, raceContext) {
+  const hasQualSpeed  = drivers.some(d => d.qualSpeed    > 0);
+  const hasPracSpeed  = drivers.some(d => d.pracBestTime > 0);
+
+  const speedSignalArr = hasQualSpeed
+    ? drivers.map(d => d.qualSpeed)
+    : hasPracSpeed
+      ? drivers.map(d => d.pracBestTime)
+      : null;
+
   const histPctArr    = drivers.map(d => d.histPctLapsLed);
   const projArr       = drivers.map(d => d.proj);
-  const qualSpeedArr  = drivers.map(d => d.qualSpeed);
   const histRatingArr = drivers.map(d => d.histRating);
   const siteLapsArr   = drivers.map(d => d.siteLapsLed);
+  const recentLLArr   = drivers.map(d => d.recentRaces > 0 ? d.recentLapsLed / d.recentRaces : 0);
 
   // startPos penalty: logarithmic — P1 gets highest raw penalty value (best)
   // rawPenalty = 1 / log(startPos + e - 1), then normalize across field
   const startPenaltyArr = drivers.map(d => 1.0 / Math.log(d.startPos + Math.E - 1));
 
   for (const d of drivers) {
+    const speedVal         = hasQualSpeed ? d.qualSpeed : d.pracBestTime;
     const histPctNorm      = normalize(d.histPctLapsLed, histPctArr);
     const startPenaltyNorm = normalize(1.0 / Math.log(d.startPos + Math.E - 1), startPenaltyArr);
-    const qualSpeedNorm    = normalize(d.qualSpeed,      qualSpeedArr);
+    const qualSpeedNorm    = speedSignalArr ? normalize(speedVal, speedSignalArr) : 50;
     const projNorm         = normalize(d.proj,           projArr);
     const histRatingNorm   = normalize(d.histRating,     histRatingArr);
     const siteLapsNorm     = normalize(d.siteLapsLed,    siteLapsArr);
+    const recentLLPerRace  = d.recentRaces > 0 ? d.recentLapsLed / d.recentRaces : 0;
+    const recentLLNorm     = normalize(recentLLPerRace, recentLLArr);
 
-    const raw = (histPctNorm      * 0.30)
+    const raw = (histPctNorm      * 0.25)
               + (startPenaltyNorm * 0.25)
               + (qualSpeedNorm    * 0.20)
               + (projNorm         * 0.15)
-              + (histRatingNorm   * 0.10)
+              + (histRatingNorm   * 0.05)
+              + (recentLLNorm     * 0.15)
               + (siteLapsNorm     * 0.05);
 
     let factor;
@@ -115,36 +178,48 @@ function computeDomPoints(drivers, raceContext) {
  * ------------------------------------------------------- */
 
 function computePDProjection(drivers) {
-  const fieldSize         = drivers.length;
-  const projArr           = drivers.map(d => d.proj);
-  const startArr          = drivers.map(d => d.startPos);
-  const histTop15Arr      = drivers.map(d => d.histTop15Pct);
-  const fieldMedianStart  = percentile(startArr, 50);
+  const fieldSize        = drivers.length;
+  const projArr          = drivers.map(d => d.proj);
+  const startArr         = drivers.map(d => d.startPos);
+  const fieldMedianStart = percentile(startArr, 50);
+
+  // Arrays for normalizing quality signals to 0-10 position-equivalent scale
+  const ratingArr    = drivers.map(d => d.siteAvgRating);
+  const finishInvArr = drivers.map(d => 40 - d.histAvgFinish);
+  const formArr      = drivers.map(d => d.recentFormScore);
 
   for (const d of drivers) {
     if (d.siteRaces === 0) {
-      d.pdProj = Math.round((d.startPos - 20) * 100) / 100;
+      const formContrib0 = (normalize(d.recentFormScore, formArr) / 100) * 10;
+      const raw0 = (d.startPos - 20) * 0.70 + formContrib0 * 0.30;
+      d.pdProj = Math.round(raw0 * 100) / 100;
       continue;
     }
 
-    const projNorm       = normalize(d.proj, projArr);
-    const impliedFinish  = 1 + (1 - projNorm / 100) * (fieldSize - 1);
-    const projContrib    = d.startPos - impliedFinish;
+    // iFantasyRace implied position gain
+    const projNorm      = normalize(d.proj, projArr);
+    const impliedFinish = 1 + (1 - projNorm / 100) * (fieldSize - 1);
+    const projContrib   = d.startPos - impliedFinish;
 
-    const histTop15Norm  = normalize(d.histTop15Pct, histTop15Arr);
-    const histTop15Contrib = (histTop15Norm / 100) * 10;
+    // Starting position vs field median (further back = more room to gain)
+    const startContrib  = (d.startPos - fieldMedianStart) / 2;
 
-    const startContrib   = (d.startPos - fieldMedianStart) / 2;
+    // Quality signals normalized 0-100 then scaled to 0-10 (position-equivalent)
+    const ratingContrib = (normalize(d.siteAvgRating,      ratingArr)    / 100) * 10;
+    const finishContrib = (normalize(40 - d.histAvgFinish, finishInvArr) / 100) * 10;
+    const formContrib   = (normalize(d.recentFormScore,    formArr)      / 100) * 10;
 
-    const raw = (d.histAvgStartFinishDiff * 0.35)
-              + (projContrib              * 0.30)
-              + (histTop15Contrib         * 0.20)
-              + (startContrib             * 0.15);
+    const raw = (d.histAvgStartFinishDiff * 0.30)
+              + (projContrib              * 0.10)
+              + (formContrib              * 0.20)
+              + (ratingContrib            * 0.15)
+              + (finishContrib            * 0.15)
+              + (startContrib             * 0.10);
 
     let factor;
     if (d.siteRaces >= 5)      factor = 1.00;
     else if (d.siteRaces >= 3) factor = 0.85;
-    else                       factor = 0.70;   // siteRaces 1-2
+    else                       factor = 0.70;
 
     d.pdProj = Math.round(raw * factor * 100) / 100;
   }
@@ -163,6 +238,7 @@ function computeAdjProjection(drivers, raceContext) {
 
   const domArr  = drivers.map(d => d.domPts);
   const pdArr   = drivers.map(d => d.pdProj);
+  const formArr = drivers.map(d => d.recentFormScore);
 
   for (const d of drivers) {
     const domNorm = normalize(d.domPts, domArr);
@@ -193,11 +269,18 @@ function computeAdjProjection(drivers, raceContext) {
       ADJ_PROJ_BOUNDS.MAX_HISTORY_ADJ
     );
 
+    const formNorm = normalize(d.recentFormScore, formArr);
+    const formAdj  = clampAdj(
+      ((formNorm - 50) / 50) * ADJ_PROJ_BOUNDS.MAX_FORM_ADJ,
+      ADJ_PROJ_BOUNDS.MAX_FORM_ADJ
+    );
+
     d.adjProj = d.proj
       + (domAdj   * w.dom)
       + (pdAdj    * w.pd)
       + (speedAdj * w.speed)
-      + (histAdj  * (w.history || 0));
+      + (histAdj  * (w.history || 0))
+      + formAdj;
 
     const floorClamp = d.floor > 0
       ? Math.min(d.floor, d.proj * 0.80)
@@ -339,25 +422,24 @@ function assignGroups(drivers, raceContext) {
   const medianAdjProj = percentile(adjProjArr, 50);
 
   for (const d of drivers) {
-    d.group = "";
+    const tags = [];
 
     // --- DOMINATOR ---
     if (targetDomsMax > 0
-        && d.domRank  <= (targetDomsMax + 2)
-        && d.domPts   >  0
-        && d.startPos <= T.DOM_MAX_START_POS) {
-      d.group = "DOM";
-      continue;
+        && d.domPts   >= 30
+        && d.startPos <= getDOMMaxStart(trackType)) {
+      tags.push("DOM");
     }
 
     // --- PD VALUE ---
-    // Qualifies via current projection OR proven track history
-    const pdByProj    = d.pdProj >= T.PD_MIN_PROJ_PD && d.histAvgStartFinishDiff > 0;
-    const pdMinStart  = getPDMinStart(trackType);
-    const pdByHistory = d.histAvgStartFinishDiff >= 5 && d.startPos >= pdMinStart;
-    if (pdByProj || pdByHistory) {
-      d.group = "PD";
-      continue;
+    // Qualifies via current projection, proven track history, or start deviation
+    const pdByProj      = d.pdProj >= T.PD_MIN_PROJ_PD && d.histAvgStartFinishDiff > 0;
+    const pdMinStart    = getPDMinStart(trackType);
+    const pdByHistory   = d.histAvgStartFinishDiff >= 5 && d.startPos >= pdMinStart;
+    d.startDeviation    = d.histAvgStart > 0 ? d.histAvgStart - d.startPos : 0;
+    const pdByDeviation = d.startDeviation <= -10;
+    if (pdByProj || pdByHistory || pdByDeviation) {
+      tags.push("PD");
     }
 
     // --- LEVERAGE (ownership-dependent) ---
@@ -366,8 +448,7 @@ function assignGroups(drivers, raceContext) {
         && d.edge    >  T.LEVERAGE_MIN_EDGE
         && d.ownPct  <  T.LEVERAGE_MAX_OWN
         && d.adjProj >  medianAdjProj) {
-      d.group = "LEVERAGE";
-      continue;
+      tags.push("LEVERAGE");
     }
 
     // --- UNDER (ownership-dependent) ---
@@ -375,11 +456,11 @@ function assignGroups(drivers, raceContext) {
         && d.edge   <= edgeP25
         && d.edge   <  0
         && d.ownPct >  avgOwn) {
-      d.group = "UNDER";
-      continue;
+      tags.push("UNDER");
     }
 
     // Everything else is ungrouped — falls into Fill pool
+    d.group = tags.join(" ");
   }
 }
 
@@ -391,20 +472,23 @@ function assignGroups(drivers, raceContext) {
 function computeCashScores(drivers) {
   const cw = CASH_WEIGHTS;
 
-  const ownArr = drivers.map(d => d.ownPct);
-  const valArr = drivers.map(d => d.salary > 0 ? d.adjProj / (d.salary / 1000) : 0);
+  const ownArr  = drivers.map(d => d.ownPct);
+  const valArr  = drivers.map(d => d.salary > 0 ? d.adjProj / (d.salary / 1000) : 0);
+  const formArr = drivers.map(d => d.recentFormScore);
 
   for (const d of drivers) {
-    const chalkNorm = normalize(d.ownPct, ownArr);
+    const chalkNorm = normalize(d.ownPct,            ownArr);
     const rawValue  = d.salary > 0 ? d.adjProj / (d.salary / 1000) : 0;
-    const valueNorm = normalize(rawValue, valArr);
+    const valueNorm = normalize(rawValue,            valArr);
+    const formNorm  = normalize(d.recentFormScore,   formArr);
 
     d.cashScore = (d.floor   * cw.floorW)
                 + (d.adjProj * cw.projW)
                 + (Math.max(0, d.pdProj) * cw.pdW)
                 - (d.dkStd   * cw.stdPenalty)
                 + (chalkNorm * cw.chalkW)
-                + (valueNorm * cw.valueW);
+                + (valueNorm * cw.valueW)
+                + (formNorm  * cw.formW);
 
     d.cashScore = Math.round(d.cashScore * 100) / 100;
   }
@@ -503,13 +587,12 @@ function computeTTHistScore(drivers) {
  *                  + (valueNorm × 0.20)    ← proj*1000/salary
  *                  + (trackHistNorm × 0.20)
  *
- *  Top 15% of non-DOM, non-PD drivers are assigned
- *  to the CASHCORE group. ~5-6 drivers at a 37-driver slate.
+ *  Top 15% of all drivers by cash grade are tagged CASHCORE.
+ *  A driver can hold CASHCORE alongside any other group tag.
  * ------------------------------------------------------- */
 
 function assignCashCoreGroup(drivers) {
-  // Only consider drivers not already in DOM or PD
-  const eligible = drivers.filter(d => d.group !== "DOM" && d.group !== "PD");
+  const eligible = drivers.slice();
   if (eligible.length === 0) return;
 
   // Normalize value and track history across eligible pool
@@ -539,7 +622,8 @@ function assignCashCoreGroup(drivers) {
   const sorted    = eligible.slice().sort((a, b) => b.cashCoreGrade - a.cashCoreGrade);
 
   for (let i = 0; i < threshold; i++) {
-    sorted[i].group = "CASHCORE";
+    const d = sorted[i];
+    d.group = d.group ? d.group + " CASHCORE" : "CASHCORE";
   }
 }
 

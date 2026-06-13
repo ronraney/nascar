@@ -121,7 +121,9 @@ function renderGPPTable(drivers, rc) {
     round2(d.cashScore),
     round2(d.trackHistScore),
     round2(d.histAvgStartFinishDiff),
+    round2(d.startDeviation),
     round2(d.ttHistScore),
+    round2(d.recentFormScore),
     d.notes.join(" | ")
   ]);
 
@@ -136,6 +138,7 @@ function renderGPPTable(drivers, rc) {
   dash.getRange(dRow, DASH_COLS.COL_START,  rows.length).setNumberFormat("0");
   dash.getRange(dRow, DASH_COLS.COL_OWN,    rows.length).setNumberFormat("0.0%");
   dash.getRange(dRow, DASH_COLS.COL_SALARY, rows.length).setNumberFormat("$#,##0");
+  dash.getRange(dRow, DASH_COLS.COL_SPSTD,  rows.length).setNumberFormat("0.0");
 
   // Active group colors — CORE removed
   const GROUP_COLORS = {
@@ -337,8 +340,10 @@ function getGroupSummary() {
   let ungrouped = 0;
 
   for (const d of drivers) {
-    if (d.group && groups[d.group] !== undefined) {
-      groups[d.group].push(d.name);
+    if (d.group) {
+      d.group.split(" ").forEach(tag => {
+        if (groups[tag] !== undefined) groups[tag].push(d.name);
+      });
     } else {
       ungrouped++;
     }
@@ -704,7 +709,7 @@ function getStepPool(stepId, contestType, usedNames, salaryRemaining) {
   }
 
   if (stepId === "CASHCORE") {
-    var pool = drivers.filter(d => canAfford(d) && d.group === "CASHCORE");
+    var pool = drivers.filter(d => canAfford(d) && d.group.includes("CASHCORE"));
 
     // Recompute cashCoreGrade from dashboard values — floor, adjProj, value, trackHistScore
     // Mirrors assignCashCoreGroup in Analysis.gs
@@ -742,7 +747,7 @@ function getStepPool(stepId, contestType, usedNames, salaryRemaining) {
   }
 
   if (stepId === "DOM") {
-    var pool = drivers.filter(d => canAfford(d) && d.group === "DOM");
+    var pool = drivers.filter(d => canAfford(d) && d.group.includes("DOM"));
     if (isCash) pool.sort((a, b) => (b.domPts + b.floor) - (a.domPts + a.floor));
     else pool.sort((a, b) => (b.domPts + b.ceiling + b.edge) - (a.domPts + a.ceiling + a.edge));
     return pool.slice(0, 10).map(d => {
@@ -755,7 +760,7 @@ function getStepPool(stepId, contestType, usedNames, salaryRemaining) {
   }
 
   if (stepId === "PD") {
-    var pool = drivers.filter(d => canAfford(d) && d.group === "PD");
+    var pool = drivers.filter(d => canAfford(d) && d.group.includes("PD"));
     if (isCash) {
       // Cash: deprioritize drivers with no historical avg finish data (histAvgFinish = 25 default)
       // No track history = unreliable floor estimate = poor cash play
@@ -984,7 +989,12 @@ function runDiagnostics() {
     { label: "DK_Salaries — dkAvgFPPG > 0",       fn: function(d){ return d.dkAvgFPPG > 0; },               note: "DK historical FPPG present" },
     { label: "Avg Start — histAvgStart > 0",        fn: function(d){ return d.histAvgStart > 0; },             note: "avg start position present" },
     { label: "Avg Start — siteRaces > 0",           fn: function(d){ return d.siteRaces > 0; },               note: "site race count present" },
-    { label: "Avg Start — histAvgStartFinishDiff",  fn: function(d){ return d.histAvgStartFinishDiff !== 0; }, note: "start/finish diff present" }
+    { label: "Avg Start — histAvgStartFinishDiff",  fn: function(d){ return d.histAvgStartFinishDiff !== 0; }, note: "start/finish diff present" },
+    { label: "Standings — recentRaces > 0",         fn: function(d){ return d.recentRaces > 0; },             note: "driver in standings" },
+    { label: "Standings — recentWins > 0",          fn: function(d){ return d.recentWins > 0; },              note: "at least 1 win this season" },
+    { label: "Standings — recentLapsLed > 0",       fn: function(d){ return d.recentLapsLed > 0; },           note: "has led laps this season" },
+    { label: "Standings — recentAvgFinish > 0",     fn: function(d){ return d.recentAvgFinish > 0; },         note: "avg finish present" },
+    { label: "Standings — recentFormScore > 0",     fn: function(d){ return d.recentFormScore > 0; },         note: "form score computed" }
   ];
 
   for (var i = 0; i < checks.length; i++) {
@@ -1059,11 +1069,35 @@ function runDiagnostics() {
     }
   }
 
+  head("MISSING STANDINGS DATA (recentRaces = 0)");
+  row("Driver", "Salary", "startPos", "Note");
+  var missingStandings = drivers.filter(function(d){ return d.recentRaces === 0; });
+  if (missingStandings.length === 0) {
+    row("✅ All drivers found in standings");
+  } else {
+    for (var i = 0; i < missingStandings.length; i++) {
+      var d = missingStandings[i];
+      row(d.name, d.salary, d.startPos, "not in Data_Standings — using median form score");
+    }
+  }
+
+  head("STANDINGS SPOT CHECK — TOP 10 BY FORM SCORE");
+  row("Driver", "FormScore", "Wins", "T5", "T10", "LapsLed", "AvgFin", "Races");
+  var byForm = drivers.slice().filter(function(d){ return d.recentRaces > 0; })
+    .sort(function(a, b){ return b.recentFormScore - a.recentFormScore; });
+  for (var i = 0; i < Math.min(10, byForm.length); i++) {
+    var d = byForm[i];
+    row(d.name, d.recentFormScore, d.recentWins, d.recentTop5, d.recentTop10,
+        d.recentLapsLed, d.recentAvgFinish, d.recentRaces);
+  }
+
   head("SPOT CHECK — FIRST 5 DRIVERS");
   var spotFields = ["name","salary","startPos","proj","floor","ceiling","dkStd",
     "domScore","finProjLow","finProjHigh","ifrRank",
     "histPctLapsLed","histFastLaps","histAvgFinish","histSkillRank",
-    "pracBestTime","qualSpeed","manufacturer","histGreenSpeed","speedConsistency","dkAvgFPPG","ownPct"];
+    "pracBestTime","qualSpeed","manufacturer","histGreenSpeed","speedConsistency",
+    "recentFormScore","recentWins","recentTop5","recentTop10","recentLapsLed","recentAvgFinish",
+    "dkAvgFPPG","ownPct"];
   row.apply(null, spotFields);
   for (var i = 0; i < Math.min(5, drivers.length); i++) {
     var d = drivers[i];
